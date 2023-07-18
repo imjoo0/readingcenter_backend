@@ -11,6 +11,9 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta
+from secrets import SECRET_KEY
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,13 +23,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-aqmu2)ozma%#=@tm1bca4q4yk)2y=*4cu%6rd+7&b_=^-dx+3@'
+# SECRET_KEY = 'django-insecure-aqmu2)ozma%#=@tm1bca4q4yk)2y=*4cu%6rd+7&b_=^-dx+3@'
+SECRET_KEY = SECRET_KEY
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
 # ALLOWED_HOSTS = []
-ALLOWED_HOSTS = ["127.0.0.1", "0.0.0.0", "3.34.45.193", "readingcenter.purpleacademy.co.kr","https://readingcenter.purpleacademy.co.kr:3000/"]
+ALLOWED_HOSTS = ["127.0.0.1", "0.0.0.0", "3.34.45.193", "https://readingcenter.purpleacademy.co.kr","https://readingcenter.purpleacademy.co.kr:3000/"]
 CSRF_TRUSTED_ORIGINS = ['https://readingcenter.purpleacademy.co.kr']
 
 # Application definition
@@ -38,12 +42,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-
+    'corsheaders',
     'user',
 
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -87,14 +92,11 @@ DATABASES = {
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.mysql',
-#         'NAME': 'readingcenter',
-#         'HOST': "localhost",
+#         'NAME': 'new_readingcenter',
+#         'HOST': 'purpleacademy.net',
 #         'PORT': '3306',
 #         'USER': 'purple',
 #         'PASSWORD': 'wjdgus00',
-#         'OPTIONS': {
-#             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-#         },
 #     }
 # }
 
@@ -138,3 +140,65 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+AUTH_USER_MODEL = 'user.User'
+
+CORS_ORIGIN_ALLOW_ALL = True
+
+CORS_ALLOWED_ORIGINS = [
+    'http://0.0.0.0',
+    'http://127.0.0.1',
+    'http://3.34.45.193',
+    'https://readingcenter.purpleacademy.co.kr',
+    'https://readingcenter.purpleacademy.co.kr:3000',
+    'https://readingcenter.purpleacademy.co.kr:8000',
+]
+
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'choice',
+    'category',
+]
+REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': [  # 기본적인 view 접근 권한 지정
+        'rest_framework.permissions.AllowAny'
+    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [  # session 혹은 token을 인증 할 클래스 설정
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication'
+    ],
+    'DEFAULT_PARSER_CLASSES': [  # request.data 속성에 액세스 할 때 사용되는 파서 지정
+        'rest_framework.parsers.JSONParser',
+        'rest_framework.parsers.FormParser',
+        'rest_framework.parsers.MultiPartParser'
+    ]
+}
+# DEFAULT_PERMISSION_CLASSES: 기본적으로 적용되는 view의 접근 권한을 설정합니다. 위의 코드에서는 AllowAny로 설정되어 모든 사용자가 접근할 수 있도록 설정되어 있습니다.
+# DEFAULT_AUTHENTICATION_CLASSES: 인증 방식을 설정합니다. 위의 코드에서는 JWT(JSON Web Token) 인증, 토큰 인증, 세션 인증 순서로 설정되어 있습니다. 사용자 인증을 위해 JWT 토큰 인증과 토큰 인증 방식을 사용할 수 있으며, 필요에 따라 세션 인증을 사용할 수도 있습니다.
+# DEFAULT_PARSER_CLASSES: 요청 데이터를 파싱하는 방식을 설정합니다. 위의 코드에서는 JSON, 폼 데이터, 멀티파트(form-based file 업로드) 파서를 설정하고 있습니다. 이렇게 설정하면 클라이언트가 요청을 보낼 때 해당 파서를 통해 데이터를 파싱하여 사용할 수 있습니다.
+
+SIMPLE_JWT = {
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'UPDATE_LAST_LOGIN': False,
+}
