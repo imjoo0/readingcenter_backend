@@ -21,8 +21,6 @@ class UserCategorySerializer(serializers.ModelSerializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
-    rank = UserProfileRankSerializer(required=False)
-
     class Meta:
         model = UserProfileModel
         fields = ['kor_name', 'eng_name', 'gender', 'mobileno', 'email', 'register_date', 'birth_year']

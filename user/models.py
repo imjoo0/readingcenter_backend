@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import BaseUserManager, AbstractBaseUser
 from datetime import datetime
+from branch.models import Branch
 
 class UserCategory(models.Model):
     name = models.CharField(verbose_name="카테고리 이름", max_length=50)
@@ -38,6 +39,7 @@ class User(AbstractBaseUser):
     username = models.CharField(max_length=50, unique=True)
     email = models.EmailField(verbose_name="사용자 이메일", max_length=254, blank=True)
     user_category = models.ForeignKey(UserCategory, verbose_name="카테고리", on_delete=models.SET_NULL, null=True)
+    branches = models.ManyToManyField(Branch, verbose_name="소속 지점들")
 
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
