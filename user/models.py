@@ -60,7 +60,7 @@ class User(AbstractBaseUser, AbstractUserProfile):
     def is_staff(self):
         return self.is_staff
 
-class StudentProfile(AbstractUserProfile):
-    # 추가적인 필드들 정의
-    pmobileno = models.CharField(verbose_name="부모님 연락처", max_length=20)
-    origin = models.CharField(verbose_name="원번", max_length=20)
+class UserProfile(AbstractUserProfile):
+
+    def __str__(self):
+        return self.user.username

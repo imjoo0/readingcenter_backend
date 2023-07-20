@@ -6,31 +6,37 @@ from collections import OrderedDict
 
 from django.db import transaction
 
+from student.models import StudentProfile as StudentProfileModel
 from user.models import (
     User as UserModel,
     UserProfile as UserProfileModel,
-    UserCategory as UserCategoryModel,
-    Rank as UserRankModel
+    UserCategory as UserCategoryModel
 )
-
 
 class UserCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = UserCategoryModel
         fields = ['id', 'name']
 
-
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfileModel
         fields = ['kor_name', 'eng_name', 'gender', 'mobileno', 'email', 'register_date', 'birth_year']
 
+class StudentProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StudentProfileModel
+        fields = ['kor_name', 'eng_name', 'gender', 'email', 'mobileno', 'pmobileno', 'email', 'register_date', 'birth_year']
 
 class UserProfilePutSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfileModel
         fields = ['mobileno', 'email']
 
+class StudentProfilePutSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StudentProfileModel
+        fields = ['mobileno', 'pmobileno', 'email']
 
 class UserSerializer(serializers.ModelSerializer):
     user_category = UserCategorySerializer()
