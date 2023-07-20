@@ -10,6 +10,32 @@ class UserCategory(models.Model):
         return self.name
 
 
+class AbstractUserProfile(models.Model):
+    class Meta:
+        db_table = "user_profile"
+    user = models.OneToOneField(to=User, verbose_name="사용자", on_delete=models.CASCADE)
+    kor_name = models.CharField("한국이름", max_length=20, default='퍼플')
+    eng_name = models.CharField("영어이름", max_length=20, default='purple')
+
+    GENDERS = (
+        ('M', '남성(Man)'),
+        ('W', '여성(Woman)'),
+    )
+    gender = models.CharField(verbose_name="성별", max_length=1, choices=GENDERS)
+    mobileno = models.CharField(verbose_name="연락처", max_length=20, unique=True)
+    register_date = models.DateTimeField(verbose_name="가입일", auto_now_add=True)
+    birth_year = models.PositiveIntegerField(verbose_name="출생 연도", null=True, blank=True)
+
+    @property
+    def age(self):
+        if self.birth_year:
+            current_year = datetime.now().year
+            return current_year - self.user.birth_year
+        return None
+    
+    class Meta:
+        abstract = True
+
 class UserManager(BaseUserManager):
     def create_user(self, username, password=None, **extra_fields):
         if not username:
@@ -32,12 +58,13 @@ class UserManager(BaseUserManager):
         return self.create_user(username, password, **extra_fields)
 
 
-class User(AbstractBaseUser):
+class User(AbstractBaseUser, AbstractUserProfile):
     class Meta:
         db_table = "user"
 
-    username = models.CharField(max_length=50, unique=True)
+    username = models.CharField("사용자계정",max_length=50, unique=True)
     email = models.EmailField(verbose_name="사용자 이메일", max_length=254, blank=True)
+    password = models.CharField("비밀번호",max_length=128)
     user_category = models.ForeignKey(UserCategory, verbose_name="카테고리", on_delete=models.SET_NULL, null=True)
     branches = models.ManyToManyField(Branch, verbose_name="소속 지점들")
 
@@ -58,26 +85,7 @@ class User(AbstractBaseUser):
     def is_staff(self):
         return self.is_staff
 
-
-class UserProfile(models.Model):
-    class Meta:
-        db_table = "user_profile"
-    user = models.OneToOneField(to=User, verbose_name="사용자", on_delete=models.CASCADE)
-    kor_name = models.CharField("한국이름", max_length=20, default='퍼플')
-    eng_name = models.CharField("영어이름", max_length=20, default='purple')
-
-    GENDERS = (
-        ('M', '남성(Man)'),
-        ('W', '여성(Woman)'),
-    )
-    gender = models.CharField(verbose_name="성별", max_length=1, choices=GENDERS)
-    mobileno = models.CharField(verbose_name="연락처", max_length=20, unique=True)
-    register_date = models.DateTimeField(verbose_name="가입일", auto_now_add=True)
-    birth_year = models.PositiveIntegerField(verbose_name="출생 연도", null=True, blank=True)
-
-    @property
-    def age(self):
-        if self.birth_year:
-            current_year = datetime.now().year
-            return current_year - self.user.birth_year
-        return None
+class StudentProfile(AbstractUserProfile):
+    # 추가적인 필드들 정의
+    pmobileno = models.CharField(verbose_name="부모님 연락처", max_length=20)
+    origin = models.CharField(verbose_name="원번", max_length=20)

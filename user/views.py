@@ -3,7 +3,7 @@ from django.http import QueryDict
 import json
 from django.shortcuts import render
 from django.contrib.auth import login, logout, authenticate
-
+from .forms import UserForm
 
 from user.jwt_claim_serializer import FirstFarmTokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -20,9 +20,8 @@ from user.serializers import UserSerializer, UserSiginUpSerializer
 from user.models import (
     User as UserModel,
     UserProfile as UserProfileModel,
-    UserCategory as UserCategoryModel,
-    Rank as UserRankModel
-    )
+    UserCategory as UserCategoryModel
+)
 
 # user/
 class UserView(APIView):
@@ -38,7 +37,10 @@ class UserView(APIView):
     # 회원가입
     def post(self, request):
         data = request.data.copy()
-
+        # form = UserForm(request.POST)
+        # if form.is_valid():
+        #     form.save()
+        #     return redirect('home')
         for i in data:
             if data[i] == "":
                 return Response("회원정보가 없습니다.", status=status.HTTP_400_BAD_REQUEST)
@@ -54,7 +56,6 @@ class UserView(APIView):
         data['userprofile'] = profile_data
 
         serializer = UserSiginUpSerializer(data=data.dict(), context={"request": request})
-
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
