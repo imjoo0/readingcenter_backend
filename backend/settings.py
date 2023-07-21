@@ -50,9 +50,15 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'corsheaders',
+    'graphene_django',
     
     'user',
+    'academy',
 ]
+
+GRAPHENE = {
+    'SCHEMA': 'user.schema.schema',
+}
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
