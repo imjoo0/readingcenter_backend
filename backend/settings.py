@@ -12,7 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
-from secrets import SECRET_KEY
+import json
 from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -25,7 +25,13 @@ STATIC_URL = 'https://readingcenter.purpleacademy.co.kr:3000/'
 
 # SECURITY WARNING: keep the secret key used in production secret!
 # SECRET_KEY = 'django-insecure-aqmu2)ozma%#=@tm1bca4q4yk)2y=*4cu%6rd+7&b_=^-dx+3@'
-SECRET_KEY = SECRET_KEY
+
+def get_secret_key():
+    with open('secrets.json') as f:
+        secrets = json.load(f)
+        return secrets['SECRET_KEY']
+    
+SECRET_KEY = get_secret_key()
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -46,10 +52,6 @@ INSTALLED_APPS = [
     'corsheaders',
     
     'user',
-    'branch',
-    'student',
-    'book',
-
 ]
 
 MIDDLEWARE = [

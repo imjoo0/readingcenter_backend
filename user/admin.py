@@ -1,21 +1,10 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-from user.models import (
-    User as UserModel,
-    UserProfile as UserProfileModel,
-    UserCategory as UserCategoryModel
-)
-from student.models import StudentProfile as StudentProfileModel
+from user.models import User as UserModel, UserProfile as UserProfileModel, UserCategory as UserCategoryModel
 
-
-# 유저 관리 페이지 안에서 유저 프로필을 조회할 수 있음(역참조 관계에서만 가능)
 class UserProfileInline(admin.StackedInline):
     model = UserProfileModel
-
-
-class StudentProfileInline(admin.StackedInline):
-    model = StudentProfileModel
 
 class UserAdmin(BaseUserAdmin):
     list_display = ('id', 'username', 'email', 'user_category')
@@ -25,46 +14,38 @@ class UserAdmin(BaseUserAdmin):
 
     fieldsets = (
         ("info", {'fields': ('username', 'password', 'email',)}),
-        ('permissions', {'fields':('is_admin', 'is_private', )}),)
+        ('permissions', {'fields':('is_staff', 'is_superuser', )}),
+    )
 
     filter_horizontal = []
 
     def get_readonly_fields(self, request, obj=None):
         if obj:
             return ('username', )
-    
-
-    def get_inline_instances(self, request, obj=None):
-        if not obj:
-            return list()
-        inlines = []
-        if obj.user_category.name == '학생':
-            inlines.append(StudentProfileInline)
         else:
-            inlines.append(UserProfileInline)
-        return inlines
-    
-    # 관리자 계정에서 사용자 계정을 생성하기 위한 필드 설정
-    # add_fieldsets = (
-    #     (None, {
-    #         'classes': ('wide',),
-    #         'fields' : ('username', 'email', 'user_category', 'password1', 'password2')}
-    #         ),
-    # )
+            return ('join_date',)
 
-    # 권한을 부여할 수도 제거할 수도 특정 조건에 맞는 사용자만 권한을 부여할 수 있음.
-    # def has_add_permission(self, request, obj=None): # 추가 권한
-    #     return True    
+    inlines = (UserProfileInline,)
 
-    # def has_delete_permission(self, request, obj=None): # 삭제 권한
-    #     return True
+    add_fieldsets = (
+        (None, {
+            'classes': ('wide',),
+            'fields': ('username', 'email', 'user_category', 'password1', 'password2'),
+        }),
+    )
 
-    # def has_change_permission(self, request, obj=None): # 수정 권한
-    #     return True
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
 
+        if obj.user_category.name == '학생':
+            try:
+                user_profile = obj.userprofile
+            except UserProfileModel.DoesNotExist:
+                user_profile = UserProfileModel(user=obj)
+                user_profile.pmobileno = "부모님연락처"
+                user_profile.origin = "원번"
+                user_profile.save()
 
-# Register your models here.
 admin.site.register(UserModel, UserAdmin)
 admin.site.register(UserProfileModel)
 admin.site.register(UserCategoryModel)
-admin.site.register(StudentProfileModel)

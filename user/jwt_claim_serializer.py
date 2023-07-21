@@ -1,7 +1,6 @@
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from user.models import UserCategory,UserProfile
-from student.models import StudentProfile
 
 class ReadingcenterTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
@@ -20,13 +19,6 @@ class ReadingcenterTokenObtainPairSerializer(TokenObtainPairSerializer):
             token['category'] = None
 
         userprofile = UserProfile.objects.get(user=user)
-        
-        if isinstance(user.user_category, UserCategory) and user.user_category.name == '학생':
-            try:
-                userprofile = StudentProfile.objects.get(user=user)
-            except StudentProfile.DoesNotExist:
-                pass
-
         token['fullname'] = userprofile.kor_name + ' (' + userprofile.eng_name + ')'
 
         return token

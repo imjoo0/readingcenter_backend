@@ -3,9 +3,9 @@ from django.http import QueryDict
 import json
 from django.shortcuts import render
 from django.contrib.auth import login, logout, authenticate
-from .forms import UserForm
+# from .forms import UserForm
 
-from user.jwt_claim_serializer import FirstFarmTokenObtainPairSerializer
+from user.jwt_claim_serializer import ReadingcenterTokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from rest_framework import permissions
@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
-from user.jwt_claim_serializer import FirstFarmTokenObtainPairSerializer
+from user.jwt_claim_serializer import ReadingcenterTokenObtainPairSerializer
 from user.serializers import UserSerializer, UserSiginUpSerializer
 from user.models import (
     User as UserModel,
