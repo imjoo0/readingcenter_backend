@@ -8,7 +8,10 @@ from django.db import transaction
 
 from user.models import (
     User as UserModel,
-    UserProfile as UserProfileModel,
+    Student as StudentModel,
+    Teacher as TeacherModel,
+    Manager as ManagerModel,
+    Superuser as SuperuserModel,
     UserCategory as UserCategoryModel
 )
 
@@ -19,22 +22,22 @@ class UserCategorySerializer(serializers.ModelSerializer):
 
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
-        model = UserProfileModel
+        model = ManagerModel
         fields = ['kor_name', 'eng_name', 'gender', 'mobileno', 'email', 'register_date', 'birth_year']
 
 class StudentProfileSerializer(serializers.ModelSerializer):
     class Meta:
-        model = UserProfileModel
+        model = StudentModel
         fields = ['kor_name', 'eng_name', 'gender', 'email', 'mobileno', 'pmobileno', 'email', 'register_date', 'birth_year']
 
 class UserProfilePutSerializer(serializers.ModelSerializer):
     class Meta:
-        model = UserProfileModel
+        model = ManagerModel
         fields = ['mobileno', 'email']
 
 class StudentProfilePutSerializer(serializers.ModelSerializer):
     class Meta:
-        model = UserProfileModel
+        model = StudentModel
         fields = ['mobileno', 'pmobileno', 'email']
 
 class UserSerializer(serializers.ModelSerializer):
@@ -72,53 +75,6 @@ class UserSerializer(serializers.ModelSerializer):
         instance.save()
         return instance
 
-# class UserSiginUpSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = UserModel
-#         fields = ["username", "password", "email", "user_category", "join_date", "userprofile"]
-
-#         extra_kwargs = {
-#             "username": {
-#                 'error_messages': {
-#                     'required': '아이디를 입력해주세요.',
-#                     'invalid': '알맞은 형식의 아이디를 입력해주세요.'
-#                 },
-#             },
-#             "email": {
-#                 'error_messages': {
-#                     'required': '이메일을 입력해주세요.',
-#                     'invalid': '알맞은 형식의 이메일을 입력해주세요.'
-#                 },
-#             },
-#         }
-        
-#     @transaction.atomic
-#     def create(self, validated_data):
-#         user_category_id = validated_data['user_category']
-#         user_profile = validated_data.pop("userprofile", None)
-
-#         user = UserModel.objects.create(
-#             username=validated_data['username'],
-#             email=validated_data['email'],
-#             user_category=user_category_id,
-#         )
-#         user.set_password(validated_data['password'])
-#         user.save()
-
-#         if user_profile:
-#             # user category가 학생인 경우 student profile 생성
-#             if user_category_id.name == '학생':
-#                 student_profile_serializer = StudentProfileSerializer(data=user_profile)
-#                 student_profile_serializer.is_valid(raise_exception=True)
-#                 student_profile_serializer.save(user=user)
-#             else:
-#                 # 학생이 아닌 경우 일반 profile 생성
-#                 user_profile_serializer = UserProfileSerializer(data=user_profile)
-#                 user_profile_serializer.is_valid(raise_exception=True)
-#                 user_profile_serializer.save(user=user)
-
-#         return user
-
 class UserSiginUpSerializer(serializers.ModelSerializer):
     user_category = UserCategorySerializer()
     userprofile = UserProfileSerializer(write_only=True)
@@ -155,9 +111,24 @@ class UserSiginUpSerializer(serializers.ModelSerializer):
         user.save()
 
         if user_profile_data:
-            UserProfileModel.objects.create(
-                user=user,
-                **user_profile_data,
-            )
-
+            if validated_data['user_category'].name =='학생':
+                StudentModel.objects.create(
+                    user=user,
+                    **user_profile_data,
+                )
+            elif validated_data['user_category'].name == '선생님':
+                TeacherModel.objects.create(
+                    user=user,
+                    **user_profile_data,
+                )   
+            elif validated_data['user_category'].name == '매니저':
+                ManagerModel.objects.create(
+                    user=user,
+                    **user_profile_data,
+                )
+            else:
+                SuperuserModel.objects.create(
+                    user=user,
+                    **user_profile_data,
+                )
         return user

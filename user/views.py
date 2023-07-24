@@ -19,7 +19,6 @@ from user.jwt_claim_serializer import ReadingcenterTokenObtainPairSerializer
 from user.serializers import UserSerializer, UserSiginUpSerializer
 from user.models import (
     User as UserModel,
-    UserProfile as UserProfileModel,
     UserCategory as UserCategoryModel
 )
 
