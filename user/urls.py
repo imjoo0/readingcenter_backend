@@ -1,18 +1,11 @@
-from django.contrib import admin
-from django.urls import path, include
-from user import views
+# user/urls.py
 
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
-)
+from django.urls import path
+from graphene_django.views import GraphQLView
+from .schema import schema
+from .views import get_csrf_token
 
 urlpatterns = [
-    # user/
-    path('api/logout/', views.UserLogoutView.as_view(), name='logout'),
-    # path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    # path('api/token/', views.FirstFarmTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    path('', views.UserView.as_view(), name='user_view'),
-    path('<obj_id>/', views.UserView.as_view()),
+    path('get_csrf_token/', get_csrf_token),  # CSRF 토큰을 얻기 위한 URL
+    path('graphql/', GraphQLView.as_view(graphiql=True, schema=schema)),  # GraphQLView를 등록합니다.
 ]

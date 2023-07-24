@@ -1,6 +1,6 @@
 import graphene
 from graphene_django.types import DjangoObjectType
-from .models import (User as UserModel,
+from user.models import (User as UserModel,
                      UserCategory as UserCategoryModel,
                      Student as StudentModel,
                      Teacher as TeacherModel,
@@ -16,10 +16,13 @@ class UserCategoryType(DjangoObjectType):
     class Meta:
         model = UserCategoryModel
 
+class Query(graphene.ObjectType):
+    # 쿼리들을 여기에 추가합니다.
+    pass
 
 class Mutation(graphene.ObjectType):
     # 로그인을 수행하는 mutation
-    login = graphene.Field(UserType, id=graphene.String, password=graphene.String(), location=graphene.String())
+    login = graphene.Field(UserType, id=graphene.String(required=True), password=graphene.String(required=True), location=graphene.String(required=True))
     
     # 로그인을 수행하는 mutation의 resolver 
     def resolve_login(self, info, id, password, location):

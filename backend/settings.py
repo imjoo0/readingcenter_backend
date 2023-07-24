@@ -38,7 +38,7 @@ DEBUG = True
 
 # ALLOWED_HOSTS = []
 ALLOWED_HOSTS = ["127.0.0.1", "0.0.0.0", "3.34.45.193", "https://readingcenter.purpleacademy.co.kr","https://readingcenter.purpleacademy.co.kr:3000/"]
-CSRF_TRUSTED_ORIGINS = ['https://readingcenter.purpleacademy.co.kr']
+CSRF_TRUSTED_ORIGINS = ['http://localhost:3000','https://readingcenter.purpleacademy.co.kr']
 
 # Application definition
 
@@ -49,6 +49,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
+    'rest_framework_simplejwt',
     'corsheaders',
     'graphene_django',
 
@@ -156,12 +158,18 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'user.User'
 
-CORS_ORIGIN_ALLOW_ALL = True
-
+CORS_ORIGIN_WHITELIST = [
+    "http://localhost:3000",  # 클라이언트 도메인을 추가하세요
+    # 다른 도메인을 추가할 수도 있습니다.
+]
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ORIGIN = "http://localhost:3000"
 CORS_ALLOWED_ORIGINS = [
     'http://0.0.0.0',
     'http://127.0.0.1',
     'http://3.34.45.193',
+    "http://localhost:3000",
+    "http://localhost:8000",
     'https://readingcenter.purpleacademy.co.kr',
     'https://readingcenter.purpleacademy.co.kr:3000',
     'https://readingcenter.purpleacademy.co.kr:8000',
@@ -216,3 +224,19 @@ SIMPLE_JWT = {
     'UPDATE_LAST_LOGIN': False,
 }
 
+CSRF_COOKIE_NAME = 'csrftoken' # Ensure CSRF cookie name matches the default
+CSRF_HEADER_NAME = 'HTTP_X_CSRFTOKEN' # Ensure CSRF header name matches the default
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'DEBUG',  # 필요한 로그 레벨로 변경 가능 (DEBUG, INFO, WARNING, ERROR 등)
+    },
+}
