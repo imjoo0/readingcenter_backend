@@ -37,8 +37,7 @@ SECRET_KEY = get_secret_key()
 DEBUG = True
 
 # ALLOWED_HOSTS = []
-ALLOWED_HOSTS = ["127.0.0.1", "0.0.0.0", "3.34.45.193", "https://readingcenter.purpleacademy.co.kr","https://readingcenter.purpleacademy.co.kr:3000/"]
-CSRF_TRUSTED_ORIGINS = ['http://localhost:3000','https://readingcenter.purpleacademy.co.kr']
+ALLOWED_HOSTS = ["http://localhost:3000","127.0.0.1", "0.0.0.0", "3.34.45.193", "https://readingcenter.purpleacademy.co.kr","https://readingcenter.purpleacademy.co.kr:3000/"]
 
 # Application definition
 
@@ -67,12 +66,10 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
-
 ROOT_URLCONF = 'backend.urls'
 
 TEMPLATES = [
@@ -158,15 +155,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'user.User'
 
-CORS_ORIGIN_WHITELIST = [
-    "http://localhost:3000",  # 클라이언트 도메인을 추가하세요
-    # 다른 도메인을 추가할 수도 있습니다.
-]
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ORIGIN = "http://localhost:3000"
 CORS_ALLOWED_ORIGINS = [
-    'http://0.0.0.0',
-    'http://127.0.0.1',
+    'http://0.0.0.1:3000',
+    'http://127.0.0.1:3000',
     'http://3.34.45.193',
     "http://localhost:3000",
     "http://localhost:8000",
@@ -197,15 +189,14 @@ CORS_ALLOW_HEADERS = [
     'category',
 ]
 REST_FRAMEWORK = {
-    'DEFAULT_PERMISSION_CLASSES': [  # 기본적인 view 접근 권한 지정
+    'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny'
     ],
-    'DEFAULT_AUTHENTICATION_CLASSES': [  # session 혹은 token을 인증 할 클래스 설정
+    'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.TokenAuthentication',
-        'rest_framework.authentication.SessionAuthentication'
     ],
-    'DEFAULT_PARSER_CLASSES': [  # request.data 속성에 액세스 할 때 사용되는 파서 지정
+    'DEFAULT_PARSER_CLASSES': [
         'rest_framework.parsers.JSONParser',
         'rest_framework.parsers.FormParser',
         'rest_framework.parsers.MultiPartParser'
@@ -218,14 +209,12 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    # 'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
+    # 'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': False,
 }
 
-CSRF_COOKIE_NAME = 'csrftoken' # Ensure CSRF cookie name matches the default
-CSRF_HEADER_NAME = 'HTTP_X_CSRFTOKEN' # Ensure CSRF header name matches the default
 
 LOGGING = {
     'version': 1,
