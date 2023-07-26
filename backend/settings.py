@@ -18,7 +18,7 @@ from django.core.exceptions import ImproperlyConfigured
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-STATIC_URL = 'https://readingcenter.purpleacademy.co.kr:3000/'
+STATIC_URL = 'http://readingcenter.purpleacademy.co.kr:3000/static/'
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
@@ -37,10 +37,9 @@ SECRET_KEY = get_secret_key()
 DEBUG = True
 
 # ALLOWED_HOSTS = []
-ALLOWED_HOSTS = ["http://localhost:3000","127.0.0.1", "0.0.0.0", "3.34.45.193", "https://readingcenter.purpleacademy.co.kr","https://readingcenter.purpleacademy.co.kr:3000/"]
+ALLOWED_HOSTS = ["118.131.85.245", "127.0.0.1", "readingcenter.purpleacademy.co.kr" ]
 
 # Application definition
-
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -58,7 +57,7 @@ INSTALLED_APPS = [
 ]
 
 GRAPHENE = {
-    'SCHEMA': 'user.schema.schema',
+    'SCHEMA': 'backend.schema.schema',
 }
 
 MIDDLEWARE = [
@@ -146,7 +145,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = 'http://readingcenter.purpleacademy.co.kr/static/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
@@ -159,12 +158,9 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     'http://0.0.0.1:3000',
     'http://127.0.0.1:3000',
-    'http://3.34.45.193',
     "http://localhost:3000",
-    "http://localhost:8000",
-    'https://readingcenter.purpleacademy.co.kr',
-    'https://readingcenter.purpleacademy.co.kr:3000',
-    'https://readingcenter.purpleacademy.co.kr:8000',
+    'http://readingcenter.purpleacademy.co.kr',
+    'http://readingcenter.purpleacademy.co.kr:3000',
 ]
 
 CORS_ALLOW_METHODS = [
@@ -208,7 +204,7 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=12),
     # 'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'ROTATE_REFRESH_TOKENS': True,
     # 'BLACKLIST_AFTER_ROTATION': True,

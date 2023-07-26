@@ -105,7 +105,7 @@ class Manager(UserProfileBase):
     
 class Superuser(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, primary_key=True)
-    academies = models.ForeignKey(Academy, verbose_name='전체 학원', related_name='superuser', on_delete=models.SET_NULL, null=True)
-
+    academies = models.ManyToManyField(Academy, verbose_name='전체 학원', related_name='superuser')
+    
     def __str__(self):
         return f"{self.user.username} 퍼플 프로필"

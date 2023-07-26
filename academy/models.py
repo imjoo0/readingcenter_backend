@@ -28,6 +28,11 @@ class Academy(models.Model):
         on_delete=models.SET_NULL,
         null=True
     )
+    superusers = models.ManyToManyField(
+        'user.Superuser',
+        verbose_name="퍼플",
+        related_name='purple_academies'
+    )
     branch = models.OneToOneField(
         to=Branch,
         verbose_name="지점",
