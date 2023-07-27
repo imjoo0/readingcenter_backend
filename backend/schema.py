@@ -93,28 +93,24 @@ class ManagerType(DjangoObjectType):
             return academies
         else:
             return []
-
+class Profile(graphene.Union):
+    class Meta:
+        types = (StudentType, TeacherType, ManagerType)
 class UserType(DjangoObjectType):
     class Meta:
         model = get_user_model()
         fields = ("id","username", "email", "userCategory", "is_staff")
     
     userCategory = graphene.String()
-    studentProfile = graphene.Field(StudentType)
-    teacherProfile = graphene.Field(TeacherType)
-    managerProfile = graphene.Field(ManagerType)
+    profile = graphene.Field(Profile)
     
-    def resolve_userCategory(self, info):
-        return self.user_category.name
-    
-    def resolve_studentProfile(self, info):
-        return getattr(self, 'student', None)
-
-    def resolve_teacherProfile(self, info):
-        return getattr(self, 'teacher', None)
-
-    def resolve_managerProfile(self, info):
-        return getattr(self, 'manager', None)
+    def resolve_profile(self, info):
+        if self.user_category.name == '학생':
+            return getattr(self, 'student', None)
+        elif self.user_category.name == '선생님':
+            return getattr(self, 'teacher', None)
+        elif self.user_category.name == '매니저':
+            return getattr(self, 'manager', None)
 
 class LectureType(DjangoObjectType):
     repeatDay = graphene.String()
