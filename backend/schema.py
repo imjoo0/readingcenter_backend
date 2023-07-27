@@ -38,7 +38,6 @@ def create_jwt(user):
 # 데이터 처리
 class AcademyType(DjangoObjectType):
     branchName = graphene.String()
-    academyId = graphene.Int()  # Newly added
     
     class Meta:
         model = AcademyModel
