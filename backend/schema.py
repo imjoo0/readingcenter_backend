@@ -120,15 +120,19 @@ class UserType(DjangoObjectType):
 class LectureType(DjangoObjectType):
     repeatDay = graphene.String()
     students = graphene.List(StudentType, description="강좌 수강 학생들")
+    teacher = graphene.Field(TeacherType, description="강좌 담임 선생님")
     class Meta:
         model = LectureModel
-        fields = ("id", "academy", "date","start_time", "end_time", "lecture_info", "teacher")
+        fields = ("id", "academy", "date","start_time", "end_time", "lecture_info")
     
     def resolve_repeat_day(self, info):
         return self.get_repeat_day_display() 
     
     def resolve_students(self, info):
         return [student.student for student in self.students.all() if hasattr(student, 'student')]
+    
+    def resolve_teacher(self, info):
+        return self.teacher
     
     
 # Mutation 
@@ -501,7 +505,7 @@ class Query(graphene.ObjectType):
     user_details = graphene.Field(UserType, user_id=graphene.Int(required=True))
     academies = graphene.List(AcademyType)
     studentsInAcademy = graphene.List(StudentType, academyId=graphene.Int(required=True))
-    lectures = graphene.List(LectureType)
+    all_lectures = graphene.List(LectureType)
     get_lectures_by_academy_and_date = graphene.List(LectureType, academy_id=graphene.Int(required=True), date=graphene.Date(required=True))
 
     def resolve_me(self, info):
@@ -510,7 +514,7 @@ class Query(graphene.ObjectType):
             return user
         return None
     
-    def resolve_allStudents(self, info):
+    def resolve_all_students(self, info):
         users = get_user_model().objects.filter(user_category__id=4)
         print(users)
         return get_user_model().objects.filter(user_category__id=4)
@@ -524,7 +528,7 @@ class Query(graphene.ObjectType):
     def resolve_studentsInAcademy(self, info, academyId):
         return StudentProfileModel.objects.filter(academies__id=academyId)
     
-    def resolve_lectures(self, info):
+    def resolve_all_lectures(self, info):
         return LectureModel.objects.all()
     
     def resolve_get_lectures_by_academy_and_date(root, info, academy_id, date):
