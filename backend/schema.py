@@ -45,19 +45,10 @@ class AcademyType(DjangoObjectType):
 
     def resolve_branchName(self, info):
         return self.branch.name
-
-class ProfileInterface(Interface):
-    kor_name = graphene.String()
-    eng_name = graphene.String()
-    gender = graphene.String()
-    mobileno = graphene.String()
-    register_date = graphene.DateTime()
-    birth_year = graphene.Int()
-
+    
 class StudentType(DjangoObjectType):
     class Meta:
         model = StudentProfileModel
-        interfaces = (ProfileInterface,)
         fields = ('user', 'kor_name', 'eng_name', 'gender', 'mobileno', 'register_date', 'birth_year', 'origin', 'pmobileno',)
 
     id = graphene.Int()
@@ -70,11 +61,11 @@ class StudentType(DjangoObjectType):
         if self.academies.exists():
             return self.academies.all()
         else:
-            return []    
+            return []
+
 class TeacherType(DjangoObjectType):
     class Meta:
         model = TeacherProfileModel
-        interfaces = (ProfileInterface,)
         fields = ('user', 'kor_name', 'eng_name', 'gender', 'mobileno', 'register_date', 'birth_year',)
 
     id = graphene.Int()
@@ -88,7 +79,6 @@ class TeacherType(DjangoObjectType):
 class ManagerType(DjangoObjectType):
     class Meta:
         model = ManagerProfileModel
-        interfaces = (ProfileInterface,)
         fields = ('user', 'kor_name', 'eng_name', 'gender', 'mobileno', 'register_date', 'birth_year',)
 
     id = graphene.Int()
@@ -110,20 +100,21 @@ class UserType(DjangoObjectType):
         fields = ("id","username", "email", "userCategory", "is_staff")
     
     userCategory = graphene.String()
-    profile = graphene.Field(ProfileType)  # ProfileType is a new type representing the profile
-
+    studentProfile = graphene.Field(StudentType)
+    teacherProfile = graphene.Field(TeacherType)
+    managerProfile = graphene.Field(ManagerType)
+    
     def resolve_userCategory(self, info):
         return self.user_category.name
+    
+    def resolve_studentProfile(self, info):
+        return getattr(self, 'student', None)
 
-    def resolve_profile(self, info):
-        user_category = self.user_category.name
-        if user_category == '학생':
-            return getattr(self, 'student', None)
-        elif user_category == '매니저':
-            return getattr(self, 'manager', None)
-        elif user_category == '선생님':
-            return getattr(self, 'teacher', None)
+    def resolve_teacherProfile(self, info):
+        return getattr(self, 'teacher', None)
 
+    def resolve_managerProfile(self, info):
+        return getattr(self, 'manager', None)
 
 class LectureType(DjangoObjectType):
     repeatDay = graphene.String()
