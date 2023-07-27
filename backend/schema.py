@@ -132,7 +132,10 @@ class LectureType(DjangoObjectType):
         return [student.student for student in self.students.all() if hasattr(student, 'student')]
     
     def resolve_teacher(self, info):
-        return self.teacher
+        if hasattr(self.teacher, 'teacher'):
+            return self.teacher.teacher
+        else:
+            return None
     
     
 # Mutation 
