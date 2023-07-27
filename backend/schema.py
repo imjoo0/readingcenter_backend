@@ -120,15 +120,19 @@ class UserType(DjangoObjectType):
 class LectureType(DjangoObjectType):
     repeatDay = graphene.String()
     students = graphene.List(StudentType, description="강좌 수강 학생들")
+    teacher = graphene.Field(TeacherType, description="강좌 담임 선생님")
     class Meta:
         model = LectureModel
-        fields = ("id", "academy", "date","start_time", "end_time", "lecture_info", "teacher")
+        fields = ("id", "academy", "date","start_time", "end_time", "lecture_info")
     
     def resolve_repeat_day(self, info):
         return self.get_repeat_day_display() 
     
     def resolve_students(self, info):
         return [student.student for student in self.students.all() if hasattr(student, 'student')]
+    
+    def resolve_teacher(self, info):
+        return self.teacher
     
     
 # Mutation 
