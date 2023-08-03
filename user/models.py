@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import BaseUserManager, AbstractBaseUser
 from academy.models import Academy
-from datetime import datetime
+from datetime import datetime, date
 
 class UserCategory(models.Model):
     name = models.CharField(verbose_name="카테고리 이름", max_length=50)
@@ -65,23 +65,20 @@ class UserProfileBase(models.Model):
     gender = models.CharField(verbose_name="성별", max_length=1, choices=GENDERS)
     mobileno = models.CharField(verbose_name="연락처", max_length=20, unique=True)
     register_date = models.DateTimeField(verbose_name="가입일", auto_now_add=True)
-    birth_year = models.PositiveIntegerField(verbose_name="출생 연도", null=True, blank=True)
+    birth_date = models.DateField(verbose_name="출생일", null=True, blank=True)
 
     class Meta:
         abstract = True
 
     @property
     def age(self):
-        if self.birth_year:
-            current_year = datetime.now().year
-            return current_year - self.birth_year
+        if self.birth_date:
+            today = date.today()
+            return today.year - self.birth_date.year - ((today.month, today.day) < (self.birth_date.month, self.birth_date.day))
         return None
-
-    def __str__(self):
-        return f"{self.user.username} 프로필"
     
 class Student(UserProfileBase):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, primary_key=True)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, primary_key=True, related_name='student')
     academies = models.ManyToManyField(Academy, verbose_name='다니는학원들', related_name='academy_students')
     pmobileno = models.CharField(verbose_name="부모님연락처", max_length=20, unique=True, null=True)
     origin = models.CharField(verbose_name="원번", max_length=20, unique=True, null=True)
@@ -90,14 +87,14 @@ class Student(UserProfileBase):
         return f"{self.user.username} 학생 프로필"
     
 class Teacher(UserProfileBase):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, primary_key=True)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, primary_key=True, related_name='teacher')
     academy = models.ForeignKey(Academy, verbose_name="채용된 학원", related_name='academy_teachers', on_delete=models.SET_NULL, null=True)
 
     def __str__(self):
         return f"{self.user.username} 선생님 프로필"
     
 class Manager(UserProfileBase):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, primary_key=True)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, primary_key=True, related_name='manager')
     academies = models.ManyToManyField(Academy, verbose_name='관리중인 학원들', related_name='academy_manager')
 
     def __str__(self):
