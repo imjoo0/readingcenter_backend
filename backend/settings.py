@@ -51,7 +51,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'corsheaders',
     'graphene_django',
-    'channels',
+
     'user',
     'academy',
     'student',
@@ -90,7 +90,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'backend.wsgi.application'
-ASGI_APPLICATION = 'backend.routing.application'
+
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
@@ -163,7 +163,6 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     'http://readingcenter.purpleacademy.co.kr',
     'http://readingcenter.purpleacademy.co.kr:3000',
-    'http://readingcenter.purpleacademy.co.kr:8000',
 ]
 
 CORS_ALLOW_METHODS = [
@@ -227,10 +226,4 @@ LOGGING = {
         'handlers': ['console'],
         'level': 'DEBUG',  # 필요한 로그 레벨로 변경 가능 (DEBUG, INFO, WARNING, ERROR 등)
     },
-}
-
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer"
-    }
 }

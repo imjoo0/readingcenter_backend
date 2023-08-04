@@ -55,6 +55,14 @@ class User(AbstractBaseUser):
     def __str__(self):
         return self.username
 
+class Remark(models.Model):
+    memo = models.TextField()
+    user = models.ForeignKey(User, verbose_name="회원", on_delete=models.CASCADE, related_name='memos')
+    academy = models.OneToOneField(Academy, verbose_name="학원", on_delete=models.CASCADE,related_name='memo')
+
+    def __str__(self):
+        return f"Memo for {self.student} at {self.academy}"
+    
 class UserProfileBase(models.Model):
     kor_name = models.CharField("한국이름", max_length=20, default='퍼플')
     eng_name = models.CharField("영어이름", max_length=20, default='purple')

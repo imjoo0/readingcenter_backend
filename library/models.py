@@ -4,7 +4,7 @@ from academy.models import Academy,Lecture
 from user.models import User, Student 
 
 class Book(models.Model):
-    kplnbn = models.IntegerField(unique=True)
+    kplbn = models.IntegerField(unique=True)
     title_ar = models.CharField(max_length=255)
     author_ar = models.CharField(max_length=255)
     title_lex = models.CharField(max_length=255)
@@ -85,12 +85,12 @@ class Book(models.Model):
     lexile_lex = models.IntegerField(null=True, blank=True)
 
 class BookInventory(models.Model):
-    plbn = models.IntegerField(null=True)
+    plbn = models.CharField(max_length=100,null=True)
     academy = models.ForeignKey(Academy, on_delete=models.SET_NULL, related_name='book_inventories', null=True)
     book = models.ForeignKey(Book, on_delete=models.PROTECT, related_name='books')
     box_number = models.CharField(max_length=255)
     place = models.TextField(blank=True, null=True)
-    isbn = models.IntegerField(verbose_name="바코드",default=0)
+    isbn = models.IntegerField(verbose_name="바코드", null=True, blank=True)
     updatetime = models.DateTimeField(default=timezone.now)
 
 class BookRental(models.Model):

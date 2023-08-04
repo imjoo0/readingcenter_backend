@@ -20,7 +20,7 @@ class Attendance(models.Model):
     exit_time = models.DateTimeField(verbose_name="퇴장시간", null=True, blank=True)
     STATUS_CHOICES = (
         ('attendance', '등원'),
-        ('completed', '완료'),
+        ('completed', '하원'),
         ('cancelled', '취소'),
         ('late', '지각'),
         ('absent', '결석'),
@@ -34,4 +34,4 @@ class Attendance(models.Model):
     )
 
     def __str__(self):
-        return f"{self.lecture.lecture_info} - {self.student.username}"
+        return f"{self.lecture.lecture_info} - {self.student.kor_name}"

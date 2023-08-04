@@ -43,7 +43,7 @@ class Academy(models.Model):
 
     def __str__(self):
         return self.name
-    
+
 class Lecture(models.Model):
     DAYS_OF_WEEK = [
         (0, 'no-repeat'),
