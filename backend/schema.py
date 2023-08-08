@@ -3,6 +3,8 @@ from django.db.models import Sum, Q
 from datetime import datetime, timedelta
 from django.conf import settings
 import graphene
+from graphene_file_upload.scalars import Upload
+import pandas as pd
 from graphene_django import DjangoObjectType
 from graphene import Interface
 from django.contrib.auth import get_user_model
@@ -28,7 +30,7 @@ from student.models import Attendance as AttendanceModel
 from graphene_django.views import GraphQLView
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import authenticate, login
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError, ObjectDoesNotExist
 
 def create_jwt(user):
     access_payload = {
@@ -55,6 +57,16 @@ class AcademyType(DjangoObjectType):
     def resolve_branchName(self, info):
         return self.branch.name
 
+class AttendanceType(DjangoObjectType):
+    class Meta:
+        model = AttendanceModel
+        fields = ("id","lecture", "student", "entry_time", "exit_time", "status")
+
+    status_display = graphene.String()
+
+    def resolve_status_display(self, info):
+        return self.get_status_display()
+    
 class StudentType(DjangoObjectType):
     class Meta:
         model = StudentProfileModel
@@ -63,7 +75,8 @@ class StudentType(DjangoObjectType):
     id = graphene.Int()
     academies = graphene.List(AcademyType)
     reserved_books_count = graphene.Int()
-    lecture_id = graphene.Int()
+    lectures = graphene.List(lambda:LectureType)
+    attendanceStatus =  graphene.List(lambda: AttendanceType, academyId = graphene.Int(), date = graphene.Date())
     
     def resolve_id(self, info):
         return self.user.id
@@ -73,14 +86,25 @@ class StudentType(DjangoObjectType):
             return self.academies.all()
         else:
             return []
+    
+    def resolve_lectures(self, info):
+        if self.lectures.exists():
+            return self.lectures.all()
+        else:
+            return []
         
     def resolve_reserved_books_count(self, info):
-        lecture_id = getattr(self, "lecture_id", None)
-        if lecture_id is not None:
-            return BookReservation.objects.filter(lecture_id=lecture_id, student=self.user).aggregate(total=Sum('books__count'))['total'] or 0
-        else:
-            return 0
+        return len(BookReservationModel.objects.filter(student=self))
+    
+    def resolve_lecture_data(self,info,academyId,date):
+        return LectureModel.objects.filter(academy_id = academyId, date = date, students__in = [self])
         
+    def resolve_attendanceStatus(self,info,academyId,date):
+        lectures = LectureModel.objects.filter(academy_id = academyId, date = date)
+        return AttendanceModel.objects.filter(lecture__in=lectures, student=self)
+
+
+    
 class TeacherType(DjangoObjectType):
     class Meta:
         model = TeacherProfileModel
@@ -140,17 +164,17 @@ class BookReservationType(DjangoObjectType):
         book_inventory_ids = self.books.values_list("id", flat=True)
         books = BookInventoryModel.objects.filter(id__in=book_inventory_ids)
         return books
-    
-    
+        
 class LectureType(DjangoObjectType):
     repeatDay = graphene.String()
     students = graphene.List(StudentType, description="강좌 수강 학생들")
     teacher = graphene.Field(TeacherType, description="강좌 담임 선생님")
     book_reservations = graphene.List(BookReservationType)
+    attendanceStatus = graphene.Field(AttendanceType)
 
     class Meta:
         model = LectureModel
-        fields = ("id", "academy", "date","start_time", "end_time", "lecture_info")
+        fields = ("id", "academy", "date","start_time", "end_time", "lecture_info","attendances")
     
     def resolve_repeat_day(self, info):
         return self.get_repeat_day_display() 
@@ -163,24 +187,38 @@ class LectureType(DjangoObjectType):
             return self.teacher.teacher
         else:
             return None
-        
+            
     def resolve_book_reservations(self, info):
         return self.book_reservations.all()
     
-class AttendanceType(DjangoObjectType):
-    class Meta:
-        model = AttendanceModel
-        fields = ("id","lecture", "student", "entry_time", "exit_time", "status")
-
-    status_display = graphene.String()
-
-    def resolve_status_display(self, info):
-        return self.get_status_display()
-
+    def resolve_attendanceStatus(self,info):
+        try:
+            AttendanceModel.objects.get(lecture=self, student__in=self.students)
+        except AttendanceModel.DoesNotExist:
+            return None
+        
+class StudentWithLectureType(graphene.ObjectType):
+    student = graphene.Field(StudentType)
+    lecture = graphene.Field(LectureType)
+    attendanceStatus =  graphene.Field(AttendanceType)
+    
+    def __init__(self, student, lecture):
+        self.student = student
+        self.lecture = lecture
+    
+    # def resolve_lecture_data(self,info,academyId,date):
+    #     return LectureModel.objects.get(academy_id = academyId, date = date, students__in = [self.student]).first()
+    
+    def resolve_attendanceStatus(self,info):
+        try:
+            return AttendanceModel.objects.get(lecture=self.lecture, student=self.student)
+        except AttendanceModel.DoesNotExist:
+            return None
+    
 class UserType(DjangoObjectType):
     class Meta:
         model = get_user_model()
-        fields = ("id","username", "email", "userCategory", "is_staff","attended_lectures","memos")
+        fields = ("id","username", "email", "userCategory", "is_staff","memos")
     
     userCategory = graphene.String()
     profile = graphene.Field(Profile)
@@ -198,12 +236,6 @@ class UserType(DjangoObjectType):
             return getattr(self, 'teacher', None)
         elif self.user_category.name == '매니저':
             return getattr(self, 'manager', None)
-        
-    def resolve_lectures(self, info):
-        if self.user_category.id == 4:
-            return self.attended_lectures.all()
-        elif self.user_category.id == 3:
-            return self.taught_lectures.all()
 
 class RemarkType(DjangoObjectType):
     class Meta:
@@ -242,47 +274,66 @@ class CreateAttendance(graphene.Mutation):
         if status_input not in ['attendance', 'completed', 'cancelled', 'late', 'absent', 'makeup']:
             raise Exception('등원 상태코드 값을 attendance, completed, cancelled, late, absent, makeup중 하나 선택해주세요 ')
 
-        existing_attendance = AttendanceModel.objects.filter(lecture=lecture, student=student).first()
-
-        if status_input == 'attendance' or status_input == 'late' :
+        attendance = AttendanceModel.objects.filter(lecture=lecture, student=student).first()
+        if not attendance:
+            attendance = AttendanceModel(
+                lecture=lecture,
+                student=student
+            )
+        if status_input in ['attendance', 'late']:
             if not entry_time:
                 raise Exception('등원시각을 입력해주세요')
-            # 'attendance' 혹은 'late' 상태를 저장하려는 경우에만 기존의 출석 정보를 확인합니다.
-            if existing_attendance:
-                existing_attendance.entry_time = entry_time
-                existing_attendance.status = status_input
-                existing_attendance.save()
-                return CreateAttendance(attendance=existing_attendance)
-        if status_input == 'completed' :
+            attendance.entry_time = entry_time
+            attendance.exit_time = None
+        elif status_input == 'completed':
             if not exit_time:
                 raise Exception('하원 시간을 입력해주세요')
-            # 'completed' 상태를 저장하려는 경우, 기존의 출석 정보를 찾아서 업데이트합니다.
-            if not existing_attendance:
+            if not attendance.entry_time:
                 raise Exception(f'{student.kor_name}({student.eng_name}) 원생은 아직 출석하지 않았습니다')
-            existing_attendance.exit_time = exit_time
-            existing_attendance.status = status_input
-            existing_attendance.save()
-            return CreateAttendance(attendance=existing_attendance)
+            attendance.exit_time = exit_time
         else:
-            #'absent' 결석 처리를 저장하려는 경우 기존의 출석정보를 찾습니다  
-            if existing_attendance:
-                existing_attendance.entry_time = None
-                existing_attendance.exit_time = None
-                existing_attendance.status = status_input
-                existing_attendance.save()
-                return CreateAttendance(attendance=existing_attendance)
+            attendance.entry_time = None
+            attendance.exit_time = None
 
-            
-        if not existing_attendance:
-            attendance = AttendanceModel.objects.create(
-                lecture=lecture,
-                student=student,
-                entry_time=entry_time,
-                exit_time=exit_time,
-                status=status_input
-            )
-            attendance.save()
-            return CreateAttendance(attendance=attendance)
+        attendance.status = status_input
+        attendance.save()
+
+class BookRegister(graphene.Mutation):
+    class Arguments:
+        file = Upload(required=True)
+
+    success = graphene.Boolean()
+    errors = graphene.List(graphene.String)
+    object = graphene.Field(BookType)  # Replace with your actual model type
+
+    def mutate(self, info, file, **kwargs):
+        try:
+            df = pd.read_excel(file)
+            for _, row in df.iterrows():
+                model_instance = BookModel(
+                    kplnbn=int(row[0]),
+                    title_ar=row[1],
+                    author_ar=row[2],
+                    title_lex=row[3],
+                    author_lex=row[4],
+                    fnf=row[5],
+                    il=row[6],
+                    litpro=row[7],
+                    lexile_code_ar=row[8],
+                    lexile_code_lex=row[9],
+                    ar_quiz=int(row[10]) if row[10] else None,
+                    ar_pts=float(row[11]) if row[11] else None,
+                    bl=float(row[12]) if row[12] else None,
+                    wc_ar=int(row[13]) if row[13] else None,
+                    wc_lex=int(row[14]) if row[14] else None,
+                    lexile_ar=int(row[15]) if row[15] else None,
+                    lexile_lex=int(row[16]) if row[16] else None
+                    # Add more fields as needed
+                )
+                model_instance.save()
+            return BookRegister(success=True, object=model_instance)
+        except Exception as e:
+            return BookRegister(success=False, errors=[str(e)])
         
 class BookReservation(graphene.Mutation):
     class Arguments:
@@ -297,12 +348,10 @@ class BookReservation(graphene.Mutation):
         # 학생, 강좌 및 책들을 가져옵니다.
         student = StudentProfileModel.objects.get(user__id=student_id)
         lecture = LectureModel.objects.get(id=lecture_id)
-        print(book_inventory_ids)
         books = BookInventoryModel.objects.filter(book_id__in=book_inventory_ids)
         if len(books) == 0:
             raise ValueError("해당하는 책이 존재하지 않습니다.")
         first_book = books[0]
-        print(books)
         books = []
         books.append(first_book)
         # 예약을 생성합니다.
@@ -413,45 +462,52 @@ class CreateLecture(graphene.Mutation):
         end_time = graphene.Time(required=True)
         lecture_info = graphene.String(required=True)
         teacher_id = graphene.Int(required=True)
-        repeat_day = graphene.Int(required=True)
+        repeat_days = graphene.List(graphene.Int, required=True)
+        repeat_weeks = graphene.Int(required=True)
 
-    lecture = graphene.Field(LectureType)
+    lecture_ids = graphene.List(graphene.Int)
 
     @staticmethod
-    def mutate(root, info, academy_id, date, start_time, end_time, lecture_info, teacher_id, repeat_day):
+    def mutate(root, info, academy_id, date, start_time, end_time, lecture_info, teacher_id, repeat_days,repeat_weeks):
         user = info.context.user
         if user.is_anonymous:
             raise Exception("Log in to add a lecture.")
         
         academy = AcademyModel.objects.get(id=academy_id)
-        teacher = UserModel.objects.get(id=teacher_id)
+        teacher = TeacherProfileModel.objects.get(user_id=teacher_id)
+        lecture_ids = []
 
-        lecture = LectureModel(
-            academy=academy,
-            date=date,
-            repeat_day = repeat_day,
-            start_time=start_time,
-            end_time=end_time,
-            lecture_info=lecture_info,
-            teacher=teacher
-        )
-        lecture.save()
+        if -1 in repeat_days:
+            lecture = LectureModel(
+                academy=academy,
+                date=date,
+                repeat_day=-1,
+                start_time=start_time,
+                end_time=end_time,
+                lecture_info=lecture_info,
+                teacher=teacher
+            )
+            lecture.save()
+            lecture_ids.append(lecture.id)
+        else:
+            start_date = date - timedelta(days=date.weekday())
+            for week in range(repeat_weeks):
+                for repeat_day in repeat_days:
+                    next_date = start_date + timedelta(days=repeat_day)
+                    lecture = LectureModel(
+                        academy=academy,
+                        date=next_date,
+                        repeat_day=repeat_day,
+                        start_time=start_time,
+                        end_time=end_time,
+                        lecture_info=lecture_info,
+                        teacher=teacher
+                    )
+                    lecture.save()
+                    lecture_ids.append(lecture.id)
+                start_date += timedelta(days=7)
 
-        return CreateLecture(lecture=lecture)
-
-class DeleteLecture(graphene.Mutation):
-    class Arguments:
-        id = graphene.ID(required=True)
-
-    success = graphene.Boolean()
-
-    def mutate(root, info, id):
-        try:
-            LectureModel.objects.get(id=id).delete()
-            success = True
-        except LectureModel.DoesNotExist:
-            success = False
-        return DeleteLecture(success=success)
+        return CreateLecture(lecture_ids=lecture_ids)
 
 class AddStudentsToLecture(graphene.Mutation):
     class Arguments:
@@ -467,7 +523,7 @@ class AddStudentsToLecture(graphene.Mutation):
             raise Exception("Log in to add students to a lecture.")
 
         lecture = LectureModel.objects.get(id=lecture_id)
-        students = UserModel.objects.filter(id__in=student_ids)
+        students = StudentProfileModel.objects.filter(user_id__in=student_ids)
 
         # Check if students are already added
         already_added_students = []
@@ -484,6 +540,94 @@ class AddStudentsToLecture(graphene.Mutation):
         lecture.save()
 
         return AddStudentsToLecture(lecture=lecture)
+
+class CreateMakeup(graphene.Mutation):
+    class Arguments:
+        lecture_id = graphene.Int(required=False)
+        student_ids = graphene.List(graphene.Int, required=True)
+        academy_id = graphene.Int(required=False)
+        date = graphene.Date(required=False)
+        start_time = graphene.Time(required=False)
+        end_time = graphene.Time(required=False)
+        lecture_info = graphene.String(required=False)
+        teacher_id = graphene.Int(required=False)
+        repeat_days = graphene.List(graphene.Int, required=False)
+        repeat_weeks = graphene.Int(required=False)
+
+    lecture_ids = graphene.List(graphene.Int)
+
+    @staticmethod
+    def mutate(root, info, student_ids, lecture_id=None, academy_id=None, date=None, start_time=None, end_time=None, lecture_info=None, teacher_id=None, repeat_days=None, repeat_weeks=None):
+        user = info.context.user
+        if user.is_anonymous:
+            raise Exception("Log in to add a lecture.")
+        
+        if lecture_id :
+            lecture = LectureModel.objects.get(id=lecture_id)
+        else:
+            if not all([academy_id, date, start_time, end_time, lecture_info, teacher_id, repeat_days, repeat_weeks]):
+                raise Exception("강의를 생성하기 위한 정보를 전부 입력해주세요")
+            
+            academy = AcademyModel.objects.get(id=academy_id)
+            teacher = TeacherProfileModel.objects.get(user_id=teacher_id)
+            lectures = []
+            if -1 in repeat_days:
+                lecture = LectureModel(
+                    academy=academy,
+                    date=date,
+                    start_time=start_time,
+                    end_time=end_time,
+                    lecture_info=lecture_info,
+                    teacher=teacher
+                )
+                lecture.save()
+                lectures.append(lecture)
+            else:
+                start_date = date - timedelta(days=date.weekday())
+                for week in range(repeat_weeks):
+                    for repeat_day in repeat_days:
+                        next_date = start_date + timedelta(days=repeat_day)
+                        lecture = LectureModel(
+                            academy=academy,
+                            date=next_date,
+                            start_time=start_time,
+                            end_time=end_time,
+                            lecture_info=lecture_info,
+                            teacher=teacher
+                        )
+                        lecture.save()
+                        lectures.append(lecture)
+                    start_date += timedelta(days=7)
+
+        students = StudentProfileModel.objects.filter(user_id__in=student_ids)
+        for lecture in lectures:
+            already_added_students = []
+            for student in students:
+                if student in lecture.students.all():
+                    already_added_students.append(student.user_id)
+
+            if already_added_students:
+                raise Exception(f"학생 id {already_added_students} 는 이미 해당강의에 수강신청했습니다")
+
+            lecture.students.add(*students)
+            lecture.save()
+
+        lecture_ids = [lecture.id for lecture in lectures]
+        return CreateMakeup(lecture_ids=lecture_ids)    
+        
+class DeleteLecture(graphene.Mutation):
+    class Arguments:
+        id = graphene.ID(required=True)
+
+    success = graphene.Boolean()
+
+    def mutate(root, info, id):
+        try:
+            LectureModel.objects.get(id=id).delete()
+            success = True
+        except LectureModel.DoesNotExist:
+            success = False
+        return DeleteLecture(success=success)
 
 class UpdateTeacherInLecture(graphene.Mutation):
     class Arguments:
@@ -541,10 +685,10 @@ class CreateStudentProfile(graphene.Mutation):
     student_profile = graphene.Field(StudentType)
 
     @staticmethod
-    def mutate(root, info, user_id, kor_name, eng_name, gender, mobileno, birth_date,register_date, pmobileno, origin):
+    def mutate(root, info, user_id, kor_name, eng_name, gender, mobileno, birth_date, register_date, pmobileno, origin):
         user = UserModel.objects.get(id=user_id)
-        existing_student_profile = StudentProfileModel.objects.get(user = user)
-        if existing_student_profile:
+        try:
+            existing_student_profile = StudentProfileModel.objects.get(user=user)
             if kor_name:
                 existing_student_profile.kor_name = kor_name
             if eng_name:
@@ -559,8 +703,19 @@ class CreateStudentProfile(graphene.Mutation):
                 existing_student_profile.pmobileno = pmobileno
             existing_student_profile.save()
             return CreateStudentProfile(student_profile=existing_student_profile)
-        student_profile = StudentProfileModel.objects.create(user=user, kor_name=kor_name, eng_name=eng_name, gender=gender, mobileno=mobileno, birth_date=birth_date,register_date=register_date, pmobileno=pmobileno, origin=origin)
-        return CreateStudentProfile(student_profile=student_profile)
+        except ObjectDoesNotExist:
+            student_profile = StudentProfileModel.objects.create(
+                user=user,
+                kor_name=kor_name,
+                eng_name=eng_name,
+                gender=gender,
+                mobileno=mobileno,
+                birth_date=birth_date,
+                register_date=register_date,
+                pmobileno=pmobileno,
+                origin=origin
+            )
+            return CreateStudentProfile(student_profile=student_profile)
 
 class CreateTeacherProfile(graphene.Mutation):
     class Arguments:
@@ -823,7 +978,7 @@ class Query(graphene.ObjectType):
     academies = graphene.List(AcademyType)
     studentsInAcademy = graphene.List(StudentType, academyId=graphene.Int(required=True))
     all_lectures = graphene.List(LectureType, academyId=graphene.Int(required=True))
-    get_lectures_by_academy_and_date = graphene.List(LectureType, academy_id=graphene.Int(required=True), date=graphene.Date(required=True))
+    get_lectures_book_count = graphene.List(BookReservationType, academy_id=graphene.Int(required=True))
     get_books_by_bl = graphene.List(
         BookType,
         minBl=graphene.Float(),
@@ -836,8 +991,8 @@ class Query(graphene.ObjectType):
     )
     get_books = graphene.List(BookType,academyId=graphene.Int())
     student_reserved_books = graphene.List(BookInventoryType, student_id=graphene.Int(required=True))
-    get_attendance = graphene.List(UserType, academyId=graphene.Int(required=True), date=graphene.Date(required=True), startTime=graphene.String(), endtime=graphene.String())
-    get_lectures_by_academy_and_date_students = graphene.List(UserType, academy_id=graphene.Int(required=True), date=graphene.Date(required=True))
+    get_attendance = graphene.List(StudentType, academyId=graphene.Int(required=True), date=graphene.Date(required=True), startTime=graphene.String(), endtime=graphene.String())
+    get_lectures_by_academy_and_date_students = graphene.List(StudentWithLectureType, academy_id=graphene.Int(required=True), date=graphene.Date(required=True))
 
     def resolve_me(self, info):
         user = info.context.user
@@ -863,26 +1018,24 @@ class Query(graphene.ObjectType):
     def resolve_all_lectures(self, info, academyId):
         return LectureModel.objects.filter(academy_id=academyId)
     
-    def resolve_get_lectures_by_academy_and_date(root, info, academy_id, date):
-        lectures = LectureModel.objects.filter(academy_id=academy_id, date=date)
-        for lecture in lectures:
-            for student in lecture.students.all():
-                student.lecture_id = lecture.id
-        return lectures
-    
     def resolve_get_lectures_by_academy_and_date_students(root, info, academy_id, date):
         lectures = LectureModel.objects.filter(academy_id=academy_id, date=date)
-        result = None
-        if len(lectures) != 0:
-            result = []
-            for lecture in lectures:
-                print(lecture.students.all())
-                result.extend(lecture.students.all())
-                # for student in lecture.students.all():
-                #     student.lecture_id = lecture.id
-            print(result)
+        # result = []
+        # for lecture in lectures:
+        #     result += lecture.students.all()
+        # return result
+        result = []
+        for lecture in lectures:
+            for student in lecture.students.all():
+                swl = StudentWithLectureType(student=student, lecture=lecture)
+                result.append(swl)
         return result
     
+    def resolve_get_lectures_book_count(root, info, academy_id):
+        lectures = LectureModel.objects.filter(academy_id=academy_id)
+        reserved_books = BookReservationModel.objects.filter(lecture__in = lectures)
+        return reserved_books
+        
     def resolve_get_books_by_bl(self, info, minBl=None, maxBl=None, minWc=None, maxWc=None, academyId=None, lecture_date=None, plbn=None):
         if academyId is None:
             academyId = 2
@@ -915,7 +1068,6 @@ class Query(graphene.ObjectType):
         reservations  = BookReservationModel.objects.filter(student=student)
         books = []
         for reservation in reservations:
-            print(reservation.books)
             books.extend(list(reservation.books.all()))
         return books
     
@@ -937,7 +1089,7 @@ class Query(graphene.ObjectType):
 
             # 해당 Lecture를 듣는 원생들 중에서 attendance가 아직 생성되지 않은 원생들을 찾습니다.
             students_attendance = AttendanceModel.objects.filter(lecture__in=lectures)
-            students_without_attendance = lectures[0].students.exclude(id__in=students_attendance.values_list('student_id', flat=True))
+            students_without_attendance = lectures[0].students.exclude(user__id__in=students_attendance.values_list('student__user__id', flat=True))
             return students_without_attendance
 
         if endtime:
@@ -949,8 +1101,7 @@ class Query(graphene.ObjectType):
             if(students_attendance):
                 target = []
                 for attendance in students_attendance:
-                    target.append(attendance.student.user)
-                print(target)
+                    target.append(attendance.student)
                 return target
 
         # starttime과 endtime 모두 전달되지 않은 경우
@@ -978,5 +1129,6 @@ class Mutation(graphene.ObjectType):
     delete_lecture_book_reservations = DeleteLectureBookReservations.Field()
     delete_student_book_reservations = DeleteStudentBookReservations.Field()
     create_remark = CreateRemark.Field()
+    create_makeup = CreateMakeup.Field()
 
 schema = graphene.Schema(query=Query, mutation=Mutation)

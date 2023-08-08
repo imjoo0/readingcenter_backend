@@ -33,7 +33,7 @@ class Academy(models.Model):
         verbose_name="퍼플",
         related_name='purple_academies'
     )
-    branch = models.OneToOneField(
+    branch = models.ForeignKey(
         to=Branch,
         verbose_name="지점",
         related_name='academies',
@@ -46,14 +46,14 @@ class Academy(models.Model):
 
 class Lecture(models.Model):
     DAYS_OF_WEEK = [
-        (0, 'no-repeat'),
-        (1, 'Monday'),
-        (2, 'Tuesday'),
-        (3, 'Wednesday'),
-        (4, 'Thursday'),
-        (5, 'Friday'),
-        (6, 'Saturday'),
-        (7, 'Sunday'),
+        (-1, 'no-repeat'),
+        (0, 'Monday'),
+        (1, 'Tuesday'),
+        (2, 'Wednesday'),
+        (3, 'Thursday'),
+        (4, 'Friday'),
+        (5, 'Saturday'),
+        (6, 'Sunday'),
     ]
     academy = models.ForeignKey(
         Academy,
@@ -72,14 +72,14 @@ class Lecture(models.Model):
     end_time = models.TimeField(verbose_name="강좌 종료 시간")
     lecture_info = models.TextField(verbose_name="강좌 설명")
     teacher = models.ForeignKey(
-        'user.User',
+        'user.Teacher',
         verbose_name="강좌 담당 선생님",
         related_name='taught_lectures',
         on_delete=models.SET_NULL,
         null=True
     )
     students = models.ManyToManyField(
-        'user.User',
+        'user.Student',
         verbose_name="강좌 수강 학생들",
         related_name='attended_lectures',
         blank=True
