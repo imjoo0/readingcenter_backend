@@ -76,10 +76,9 @@ class StudentType(DjangoObjectType):
     academies = graphene.List(AcademyType)
     reserved_books_count = graphene.Int()
     lectures = graphene.List(lambda:LectureType)
-    attendanceStatus =  graphene.List(lambda: AttendanceType, academyId = graphene.Int(), date = graphene.Date())
     
     def resolve_id(self, info):
-        return self.user.id
+        return self.user_id
 
     def resolve_academies(self, info):
         if self.academies.exists():
@@ -88,10 +87,7 @@ class StudentType(DjangoObjectType):
             return []
     
     def resolve_lectures(self, info):
-        if self.lectures.exists():
-            return self.lectures.all()
-        else:
-            return []
+        return self.attended_lectures.all()
         
     def resolve_reserved_books_count(self, info):
         return len(BookReservationModel.objects.filter(student=self))
@@ -99,12 +95,6 @@ class StudentType(DjangoObjectType):
     def resolve_lecture_data(self,info,academyId,date):
         return LectureModel.objects.filter(academy_id = academyId, date = date, students__in = [self])
         
-    def resolve_attendanceStatus(self,info,academyId,date):
-        lectures = LectureModel.objects.filter(academy_id = academyId, date = date)
-        return AttendanceModel.objects.filter(lecture__in=lectures, student=self)
-
-
-    
 class TeacherType(DjangoObjectType):
     class Meta:
         model = TeacherProfileModel
@@ -114,7 +104,7 @@ class TeacherType(DjangoObjectType):
     academy = graphene.Field(AcademyType)
     
     def resolve_id(self, info):
-        return self.user.id
+        return self.user_id
     def resolve_academy(self, info):
         return self.academy
 
@@ -127,7 +117,7 @@ class ManagerType(DjangoObjectType):
     academies = graphene.List(AcademyType)
     
     def resolve_id(self, info):
-        return self.user.id
+        return self.user_id
 
     def resolve_academies(self, info):
         academies = AcademyModel.objects.filter(manager=self.user)
@@ -180,7 +170,7 @@ class LectureType(DjangoObjectType):
         return self.get_repeat_day_display() 
     
     def resolve_students(self, info):
-        return [student.student for student in self.students.all() if hasattr(student, 'student')]
+        return self.students.all()
     
     def resolve_teacher(self, info):
         if hasattr(self.teacher, 'teacher'):
@@ -193,7 +183,7 @@ class LectureType(DjangoObjectType):
     
     def resolve_attendanceStatus(self,info):
         try:
-            AttendanceModel.objects.get(lecture=self, student__in=self.students)
+            AttendanceModel.objects.filter(lecture=self)
         except AttendanceModel.DoesNotExist:
             return None
         
@@ -955,6 +945,7 @@ class Login(graphene.Mutation):
 
     accessToken = graphene.String()
     refreshToken = graphene.String()
+    user_info = graphene.Field(UserType)
 
     def mutate(self, info, username, password):
         user = authenticate(username=username, password=password)
@@ -967,7 +958,7 @@ class Login(graphene.Mutation):
         login(info.context, user)
         accessToken, refreshToken = create_jwt(user)
 
-        return Login(accessToken=accessToken, refreshToken=refreshToken)
+        return Login(accessToken=accessToken, refreshToken=refreshToken,user_info = user)
 
 # 처리
 class Query(graphene.ObjectType):
@@ -992,6 +983,7 @@ class Query(graphene.ObjectType):
     get_books = graphene.List(BookType,academyId=graphene.Int())
     student_reserved_books = graphene.List(BookInventoryType, student_id=graphene.Int(required=True))
     get_attendance = graphene.List(StudentType, academyId=graphene.Int(required=True), date=graphene.Date(required=True), startTime=graphene.String(), endtime=graphene.String())
+    get_lectures_by_academy_and_date = graphene.List(LectureType, academy_id=graphene.Int(required=True), date=graphene.Date(required=True))
     get_lectures_by_academy_and_date_students = graphene.List(StudentWithLectureType, academy_id=graphene.Int(required=True), date=graphene.Date(required=True))
 
     def resolve_me(self, info):
@@ -1017,6 +1009,13 @@ class Query(graphene.ObjectType):
     
     def resolve_all_lectures(self, info, academyId):
         return LectureModel.objects.filter(academy_id=academyId)
+    
+    def resolve_get_lectures_by_academy_and_date(root, info, academy_id, date):
+        lectures = LectureModel.objects.filter(academy_id=academy_id, date=date)
+        for lecture in lectures:
+            for student in lecture.students.all():
+                student.lecture_id = lecture.id
+        return lectures
     
     def resolve_get_lectures_by_academy_and_date_students(root, info, academy_id, date):
         lectures = LectureModel.objects.filter(academy_id=academy_id, date=date)
