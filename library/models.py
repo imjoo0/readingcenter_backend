@@ -4,6 +4,7 @@ from academy.models import Academy,Lecture
 from user.models import User, Student 
 
 class Book(models.Model):
+    id = models.IntegerField(unique=True, primary_key=True) 
     kplbn = models.IntegerField(unique=True)
     title_ar = models.CharField(max_length=255)
     author_ar = models.CharField(max_length=255)
@@ -87,7 +88,7 @@ class Book(models.Model):
 class BookInventory(models.Model):
     plbn = models.CharField(max_length=100,null=True)
     academy = models.ForeignKey(Academy, on_delete=models.SET_NULL, related_name='book_inventories', null=True)
-    book = models.ForeignKey(Book, on_delete=models.PROTECT, related_name='books')
+    book = models.ForeignKey(Book, on_delete=models.PROTECT, related_name='books', null=True)
     box_number = models.CharField(max_length=255)
     place = models.TextField(blank=True, null=True)
     isbn = models.IntegerField(verbose_name="바코드", null=True, blank=True)
@@ -102,7 +103,6 @@ class BookRental(models.Model):
     memo = models.TextField(blank=True, null=True)
 
 class BookReservation(models.Model):
-    lecture = models.ForeignKey(Lecture, on_delete=models.PROTECT, related_name='book_reservations')
-    student = models.ForeignKey(Student, on_delete=models.PROTECT, related_name='book_reservations')
+    lecture = models.ForeignKey(Lecture, on_delete=models.CASCADE, related_name='book_reservations')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='book_reservations')
     books = models.ManyToManyField(BookInventory, related_name='reservations')
-

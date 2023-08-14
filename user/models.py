@@ -38,6 +38,7 @@ class User(AbstractBaseUser):
     email = models.EmailField(verbose_name="사용자 이메일", max_length=254, blank=True)
     password = models.CharField("비밀번호",max_length=128)
     user_category = models.ForeignKey(UserCategory, verbose_name="카테고리", on_delete=models.SET_NULL, null=True)
+    is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)        
     
     REQUIRED_FIELDS = []
@@ -58,7 +59,7 @@ class User(AbstractBaseUser):
 class Remark(models.Model):
     memo = models.TextField()
     user = models.ForeignKey(User, verbose_name="회원", on_delete=models.CASCADE, related_name='memos')
-    academy = models.OneToOneField(Academy, verbose_name="학원", on_delete=models.CASCADE,related_name='memo')
+    academy = models.ForeignKey(Academy, verbose_name="학원", on_delete=models.CASCADE, related_name='memo')
 
     def __str__(self):
         return f"Memo for {self.student} at {self.academy}"
@@ -71,7 +72,7 @@ class UserProfileBase(models.Model):
         ('W', '여성(Woman)'),
     )
     gender = models.CharField(verbose_name="성별", max_length=1, choices=GENDERS)
-    mobileno = models.CharField(verbose_name="연락처", max_length=20, unique=True)
+    mobileno = models.CharField(verbose_name="연락처", max_length=20)
     register_date = models.DateTimeField(verbose_name="가입일", auto_now_add=True)
     birth_date = models.DateField(verbose_name="출생일", null=True, blank=True)
 
@@ -88,7 +89,7 @@ class UserProfileBase(models.Model):
 class Student(UserProfileBase):
     user = models.OneToOneField(User, on_delete=models.CASCADE, primary_key=True, related_name='student')
     academies = models.ManyToManyField(Academy, verbose_name='다니는학원들', related_name='academy_students')
-    pmobileno = models.CharField(verbose_name="부모님연락처", max_length=20, unique=True, null=True)
+    pmobileno = models.CharField(verbose_name="부모님연락처", max_length=20, null=True)
     origin = models.CharField(verbose_name="원번", max_length=20, unique=True, null=True)
 
     def __str__(self):
