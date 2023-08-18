@@ -6,10 +6,10 @@ from user.models import User, Student
 class Book(models.Model):
     id = models.IntegerField(unique=True, primary_key=True) 
     kplbn = models.IntegerField(unique=True)
-    title_ar = models.CharField(max_length=255)
-    author_ar = models.CharField(max_length=255)
-    title_lex = models.CharField(max_length=255)
-    author_lex = models.CharField(max_length=255)
+    title_ar = models.CharField(max_length=255, null=True)
+    author_ar = models.CharField(max_length=255, null=True)
+    title_lex = models.CharField(max_length=255, null=True)
+    author_lex = models.CharField(max_length=255, null=True)
     FNF = (
         (0, 'F_NF'),
         (1, 'F'),
@@ -19,7 +19,7 @@ class Book(models.Model):
         verbose_name="FNF", 
         max_length=10, 
         choices=FNF,
-        default=0
+        null=True
     )
     IL = (
         (0, 'IL'),
@@ -32,7 +32,7 @@ class Book(models.Model):
         verbose_name="IL", 
         max_length=10, 
         choices=IL,
-        default=0
+        null=True
     )
     LITPRO = (
         (0, 'LITPRO'),
@@ -59,7 +59,7 @@ class Book(models.Model):
         verbose_name="LEXILE_CODE_AR", 
         max_length=10, 
         choices=LEXILE_CODE_AR,
-        default=0
+        null=True
     )
     LEXILE_CODE_LEX = (
         (0, 'LEXILE_CODE_LEX'),
@@ -75,7 +75,7 @@ class Book(models.Model):
         verbose_name="LEXILE_CODE_LEX", 
         max_length=10, 
         choices=LEXILE_CODE_LEX,
-        default=0
+        null=True
     )
     ar_quiz = models.IntegerField(null=True, blank=True)
     ar_pts = models.FloatField(null=True, blank=True)

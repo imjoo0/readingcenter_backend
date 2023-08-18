@@ -12,11 +12,11 @@ from django.db import connection
 
 # 외래 키 제약 해제
 with connection.cursor() as cursor:
-    cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
+    cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
 
 # 마이그레이션 수행
 # python manage.py migrate library <migration_name>
 
 # 외래 키 제약 활성화
 with connection.cursor() as cursor:
-    cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
+    cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")

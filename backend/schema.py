@@ -873,19 +873,18 @@ class UpdateTeacherProfile(graphene.Mutation):
 class RemoveStudentFromLecture(graphene.Mutation):
     class Arguments:
         lecture_id = graphene.ID(required=True)
-        student_id = graphene.ID(required=True)
+        student_ids = graphene.List(graphene.ID,required=True)
 
     lecture = graphene.Field(LectureType)
 
     @staticmethod
-    def mutate(root, info, lecture_id, student_id):
+    def mutate(root, info, lecture_id, student_ids):
         try:
             # Find the objects
             lecture = LectureModel.objects.get(id=lecture_id)
-            student = UserModel.objects.get(id=student_id)
-
-            # Remove the student from the lecture
-            lecture.students.remove(student)
+            students = StudentProfileModel.objects.filter(user_id__in=student_ids)
+            lecture.students.remove(*students)
+            print(lecture)
             lecture.save()
 
             return RemoveStudentFromLecture(lecture=lecture)
