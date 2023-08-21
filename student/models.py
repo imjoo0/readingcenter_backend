@@ -31,7 +31,8 @@ class Attendance(models.Model):
         verbose_name="상태", 
         max_length=10, 
         choices=STATUS_CHOICES,
-        default='absent'
+        default=None,
+        null=True
     )
 
     def __str__(self):

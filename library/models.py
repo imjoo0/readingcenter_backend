@@ -91,7 +91,7 @@ class BookInventory(models.Model):
     book = models.ForeignKey(Book, on_delete=models.PROTECT, related_name='books', null=True)
     box_number = models.CharField(max_length=255)
     place = models.TextField(blank=True, null=True)
-    isbn = models.IntegerField(verbose_name="바코드", null=True, blank=True)
+    isbn = models.BigIntegerField(verbose_name="바코드", null=True, blank=True)
     updatetime = models.DateTimeField(default=timezone.now)
 
 class BookRental(models.Model):

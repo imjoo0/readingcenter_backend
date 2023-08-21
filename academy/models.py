@@ -40,7 +40,9 @@ class Academy(models.Model):
         on_delete=models.SET_NULL,
         null=True
     )
-
+    notification_interval = models.IntegerField(verbose_name="알람 전후 시간 설정",default=5)
+    end_notification_custom = models.BooleanField(verbose_name="하원/등원에 커스텀",default=False)
+    
     def __str__(self):
         return self.name
 

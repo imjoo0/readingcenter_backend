@@ -6,7 +6,7 @@ cursor = connection.cursor()
 
 try:
     # 외래 키 제약 해제
-    cursor.execute("SET FOREIGN_KEY_CHECKS=0;")
+    cursor.execute("SET FOREIGN_KEY_CHECKS=1;")
     
     # 데이터 삭제
     # cursor.execute("DELETE FROM table_name;")
@@ -15,7 +15,7 @@ try:
     # ... (데이터 다시 삽입 작업)
     
     # 외래 키 제약 복원
-    cursor.execute("SET FOREIGN_KEY_CHECKS=0;")
+    cursor.execute("SET FOREIGN_KEY_CHECKS=1;")
     
     # 커밋
     connection.commit()
