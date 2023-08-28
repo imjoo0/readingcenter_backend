@@ -86,8 +86,10 @@ class Lecture(models.Model):
         related_name='attended_lectures',
         blank=True
     )
-    start_notification_sent = models.BooleanField(default=False)
-    end_notification_sent = models.BooleanField(default=False)
+    auto_add = models.BooleanField(default=False)
 
     def __str__(self):
         return self.lecture_info
+
+
+

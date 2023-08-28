@@ -37,7 +37,7 @@ SECRET_KEY = get_secret_key()
 DEBUG = True
 
 # ALLOWED_HOSTS = []
-ALLOWED_HOSTS = ["118.131.85.245", "127.0.0.1", "readingcenter.purpleacademy.co.kr" ]
+ALLOWED_HOSTS = ["118.131.85.245", "127.0.0.1", "readingcenter.purpleacademy.co.kr","3.36.65.236:8000"]
 
 # Application definition
 INSTALLED_APPS = [

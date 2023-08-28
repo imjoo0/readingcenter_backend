@@ -29,7 +29,6 @@ class UserManager(BaseUserManager):
         
         return self.create_user(username, password, **extra_fields)
 
-
 class User(AbstractBaseUser):
     class Meta:
         db_table = "user"
@@ -115,3 +114,4 @@ class Superuser(models.Model):
     
     def __str__(self):
         return f"{self.user.username} 퍼플 프로필"
+

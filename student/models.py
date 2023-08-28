@@ -19,6 +19,8 @@ class Attendance(models.Model):
     )
     entry_time = models.DateTimeField(verbose_name="입장시간", null=True, blank=True)
     exit_time = models.DateTimeField(verbose_name="퇴장시간", null=True, blank=True)
+    memo = models.TextField(verbose_name="강의 메모", null=True, blank=True)
+    
     STATUS_CHOICES = (
         ('attendance', '등원'),
         ('completed', '하원'),

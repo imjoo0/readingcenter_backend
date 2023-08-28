@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from simple_history.models import HistoricalRecords
 from academy.models import Academy,Lecture
 from user.models import User, Student 
 
@@ -86,6 +87,11 @@ class Book(models.Model):
     lexile_lex = models.IntegerField(null=True, blank=True)
 
 class BookInventory(models.Model):
+    STATUS_CHOICES = [
+        (0, '정상'),
+        (1, '파손'),
+        (2, '분실'),
+    ]
     plbn = models.CharField(max_length=100,null=True)
     academy = models.ForeignKey(Academy, on_delete=models.SET_NULL, related_name='book_inventories', null=True)
     book = models.ForeignKey(Book, on_delete=models.PROTECT, related_name='books', null=True)
@@ -93,6 +99,9 @@ class BookInventory(models.Model):
     place = models.TextField(blank=True, null=True)
     isbn = models.BigIntegerField(verbose_name="바코드", null=True, blank=True)
     updatetime = models.DateTimeField(default=timezone.now)
+    status = models.IntegerField(choices=STATUS_CHOICES, default=0, null=True)
+
+    history = HistoricalRecords()
 
 class BookRental(models.Model):
     book_inventory = models.ForeignKey(BookInventory, on_delete=models.PROTECT, related_name='rentals', null=True)
