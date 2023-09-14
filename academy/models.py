@@ -46,6 +46,7 @@ class Academy(models.Model):
     def __str__(self):
         return self.name
 
+# lecture모델 바꾸기 전 커밋'
 class Lecture(models.Model):
     DAYS_OF_WEEK = [
         (-1, 'no-repeat'),
