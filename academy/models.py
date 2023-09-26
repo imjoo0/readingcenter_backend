@@ -47,12 +47,6 @@ class Academy(models.Model):
         return self.name
 
 class LectureInfo(models.Model):
-    academy = models.ForeignKey(
-        Academy,
-        verbose_name="학원",
-        related_name='lectures',
-        on_delete=models.CASCADE
-    )
     DAYS_OF_WEEK = [
         (-1, 'no-repeat'),
         (0, 'Monday'),
@@ -85,10 +79,13 @@ class Lecture(models.Model):
         on_delete=models.CASCADE,
         related_name='lectures'
     )
-    date = models.DateField(verbose_name="강좌 날짜")
-    start_time = models.TimeField(verbose_name="강좌 시작 시간",default=None)
-    end_time = models.TimeField(verbose_name="강좌 종료 시간",default=None)
-    lecture_memo = models.TextField(verbose_name="강좌 메모",default=None)
+    academy = models.ForeignKey(
+        Academy,
+        verbose_name="학원",
+        related_name='lectures',
+        on_delete=models.CASCADE,
+        default=None
+    )
     students = models.ManyToManyField(
         'user.Student',
         verbose_name="강좌 수강 학생들",
@@ -102,3 +99,7 @@ class Lecture(models.Model):
         on_delete=models.SET_NULL,
         null=True
     )    
+    date = models.DateField(verbose_name="강좌 날짜")
+    start_time = models.TimeField(verbose_name="강좌 시작 시간",default=None)
+    end_time = models.TimeField(verbose_name="강좌 종료 시간",default=None)
+    lecture_memo = models.TextField(verbose_name="강좌 메모",default=None)

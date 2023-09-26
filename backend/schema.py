@@ -11,6 +11,7 @@ from graphene import InputObjectType
 from graphene import Interface
 from django.contrib.auth import get_user_model
 import json
+import pytz
 
 from user.models import (
     User as UserModel,
@@ -862,6 +863,12 @@ class LectureInput(InputObjectType):
     lecture_memo = graphene.String(required=False)
     teacher_id = graphene.Int(required=False)
 
+def daterange(start_date, end_date, delta):
+    current_date = start_date
+    while current_date <= end_date:
+        yield current_date
+        current_date += delta
+
 class PutLecture(graphene.Mutation):
     class Arguments:
         input_data = LectureInput(required=True)
@@ -885,36 +892,59 @@ class PutLecture(graphene.Mutation):
         lecture.date = input_data.get('date', lecture.date)
         lecture.start_time = input_data.get('start_time', lecture.start_time)
         lecture.end_time = input_data.get('end_time', lecture.end_time)
-        lecture.lecture_info = input_data.get('lecture_info', lecture.lecture_info)
+        lecture.lecture_memo = input_data.get('lecture_memo', lecture.lecture_memo)
 
         new_teacher_id = input_data.get('teacher_id')
         if new_teacher_id:
             lecture.teacher = TeacherProfileModel.objects.get(user_id=new_teacher_id)
 
+        repeat_weeks = input_data.get('repeat_weeks')
+        if repeat_weeks is not None:
+            repeat_weeks = int(repeat_weeks)
+            if repeat_weeks < lecture.lecture_info.repeat_weeks:
+                # repeat_weeks 값이 기존보다 작으면 범위를 넘어가는 lecture 삭제
+                today = timezone.now().astimezone(pytz.timezone('Asia/Seoul')).date()
+                end_date = today + timedelta(weeks=repeat_weeks)
+                LectureModel.objects.filter(
+                    lecture_info=lecture.lecture_info,
+                    date__gt=end_date
+                ).delete()
+            elif repeat_weeks > lecture.lecture_info.repeat_weeks:
+                # repeat_weeks 값이 기존보다 크면 부족한 lecture 추가
+                today = timezone.now().astimezone(pytz.timezone('Asia/Seoul')).date()
+                start_date = today + timedelta(weeks=lecture.lecture_info.repeat_weeks)
+                end_date = today + timedelta(weeks=repeat_weeks)
+                for current_date in daterange(start_date, end_date, timedelta(weeks=1)):
+                    if current_date.weekday() in lecture.lecture_info.repeat_day:
+                        new_lecture = LectureModel(
+                            academy=lecture.lecture_info.academy,
+                            date=current_date,
+                            start_time=lecture.start_time,
+                            end_time=lecture.end_time,
+                            lecture_memo=lecture.lecture_memo,
+                            teacher=lecture.teacher,
+                            lecture_info=lecture.lecture_info,
+                        )
+                        new_lecture.save()
+
         repeat_days = input_data.get('repeat_days')
         if repeat_days:
-            LectureModel.objects.filter(lecture_id=lecture_id).delete()
-            academy = lecture.academy
-            teacher = lecture.teacher
-            auto_add = lecture.auto_add
-            repeat_weeks = input_data.get('repeat_weeks', 0)  # Use provided repeat_weeks or 0 if not provided
-            
-            start_date = lecture.date - timedelta(days=lecture.date.weekday())
-            
-            for week in range(repeat_weeks):
+            repeat_days = json.loads(repeat_days)
+            print(lecture.lecture_info)
+            today = datetime.now(pytz.timezone('Asia/Seoul')).date()
+            updated_lectures = LectureModel.objects.filter(
+                lecture_info=lecture.lecture_info,
+                date__gte=today
+            )
+            start_date = today
+            for lecture in updated_lectures:
                 for repeat_day in repeat_days:
-                    next_date = start_date + timedelta(days=repeat_day)
-                    new_lecture = LectureModel(
-                        academy=academy,
-                        date=next_date,
-                        repeat_day=repeat_day,
-                        start_time=lecture.start_time,
-                        end_time=lecture.end_time,
-                        lecture_info=lecture.lecture_info,
-                        teacher=teacher,
-                        auto_add=auto_add
-                    )
-                    new_lecture.save()
+                    # repeat_day가 현재 요일을 나타내므로, 다음 해당 요일의 날짜 계산
+                    next_date = start_date + timedelta(days=(repeat_day - start_date.weekday() + 7) % 7)
+                    lecture.date = next_date
+                    lecture.save()
+                start_date += timedelta(days=1)
+        
         # Save the updated lecture
         lecture.save()
         return PutLecture(lecture=lecture)    
