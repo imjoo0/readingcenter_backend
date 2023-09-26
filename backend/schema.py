@@ -10,6 +10,8 @@ from graphene_django import DjangoObjectType
 from graphene import InputObjectType
 from graphene import Interface
 from django.contrib.auth import get_user_model
+import json
+
 from user.models import (
     User as UserModel,
     UserCategory as UserCategoryModel,
@@ -20,6 +22,7 @@ from user.models import (
 )
 from academy.models import (
     Academy as AcademyModel,
+    LectureInfo as LectureInfoModel,
     Lecture as LectureModel
 )
 from library.models import(
@@ -32,11 +35,11 @@ from student.models import(
     BookRecord as BookRecordModel,
     Attendance as AttendanceModel
 ) 
+
 from graphene_django.views import GraphQLView
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import authenticate, login
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
-from copy import deepcopy
 
 def create_jwt(user):
     access_payload = {
@@ -177,25 +180,38 @@ class BookRentalType(DjangoObjectType):
         model = BookRentalModel
         fields = ("id","book_inventory", "student", "rented_at","due_date","returned_at","memo")
             
-class LectureType(DjangoObjectType):
+class LectureInfoType(DjangoObjectType):
     repeatDay = graphene.String()
+    class Meta:
+        model = LectureInfoModel
+
+    def resolve_repeat_day(self, info):
+        # JSONField를 문자열로 변환하여 반환
+        return ', '.join([day for day, label in self.repeat_day]) 
+    
+class LectureType(DjangoObjectType):
     students = graphene.List(StudentType, description="강좌 수강 학생들")
     teacher = graphene.Field(TeacherType, description="강좌 담임 선생님")
+    # lecture_info = graphene.Field(LectureInfoType, description="강좌 정보")
     book_reservations = graphene.List(BookReservationType)
     attendanceStatus = graphene.Field(AttendanceType, studentId=graphene.Int())
 
     class Meta:
         model = LectureModel
-        fields = ("id", "academy", "date","start_time", "end_time", "lecture_info","attendances","teacher")
-    
-    def resolve_repeat_day(self, info):
-        return self.get_repeat_day_display() 
+        fields = ("id", "academy", "date", "lecture_memo", "attendances", "teacher", "lecture_info", "start_time", "end_time")
     
     def resolve_students(self, info):
-        return self.students.all()
+        return self.student_set.all()
             
     def resolve_book_reservations(self, info):
-        return self.book_reservations.all()
+        return self.book_reservations_set.all()
+    
+    # def resolve_lecture_info(self, info):
+    #     # 현재 강좌의 lecture_info 필드를 사용하여 강좌 정보를 가져옵니다.
+    #     if self.lecture_info:
+    #         return self.lecture_info
+    #     else:
+    #         return None
     
     def resolve_attendanceStatus(self,info, studentId=None):
         if studentId is not None:
@@ -649,55 +665,63 @@ class DeleteStudentBookReservations(graphene.Mutation):
 
 class CreateLecture(graphene.Mutation):
     class Arguments:
-        academy_id = graphene.Int(required=True)
-        date = graphene.Date(required=True)
+        # lectureInfo 
+        academy_id = graphene.Int(required=True) 
+        repeat_days = graphene.String(required=True)
+        repeat_weeks = graphene.Int(required=True)
+        about = graphene.String(required=True)
+        auto_add = graphene.Boolean(required=True)
+        # lecture
+        date = graphene.Date(required=True) 
         start_time = graphene.Time(required=True)
         end_time = graphene.Time(required=True)
-        lecture_info = graphene.String(required=True)
+        lecture_memo = graphene.String(required=False)
         teacher_id = graphene.Int(required=True)
-        repeat_days = graphene.List(graphene.Int, required=True)
-        repeat_weeks = graphene.Int(required=True)
-        auto_add = graphene.Boolean(required=True)
 
     lecture_ids = graphene.List(graphene.Int)
 
     @staticmethod
-    def mutate(root, info, academy_id, date, start_time, end_time, lecture_info, teacher_id, repeat_days,repeat_weeks,auto_add):
+    def mutate(root, info, academy_id, date, start_time, end_time, about, teacher_id, repeat_days,repeat_weeks,auto_add, lecture_memo):
         user = info.context.user
         if user.is_anonymous:
             raise Exception("Log in to add a lecture.")
         
         academy = AcademyModel.objects.get(id=academy_id)
         teacher = TeacherProfileModel.objects.get(user_id=teacher_id)
+        # GraphQL에서 넘어온 문자열 형태의 JSON을 딕셔너리로 파싱
+        repeat_days_dict = json.loads(repeat_days)
         lecture_ids = []
 
-        if -1 in repeat_days:
+        lecture_info = LectureInfoModel(
+            academy=academy,
+            repeat_day=repeat_days_dict,
+            about=about,
+            teacher=teacher,
+            auto_add = auto_add 
+        )
+        lecture_info.save()
+        if -1 in repeat_days_dict:
             lecture = LectureModel(
-                academy=academy,
+                lecture_info=lecture_info,
                 date=date,
-                repeat_day=-1,
                 start_time=start_time,
                 end_time=end_time,
-                lecture_info=lecture_info,
-                teacher=teacher,
-                auto_add = auto_add 
+                lecture_memo=lecture_memo,
+                teacher=teacher
             )
-            lecture.save()
             lecture_ids.append(lecture.id)
         else:
             start_date = date - timedelta(days=date.weekday())
             for week in range(repeat_weeks):
-                for repeat_day in repeat_days:
+                for repeat_day in repeat_days_dict:
                     next_date = start_date + timedelta(days=repeat_day)
                     lecture = LectureModel(
-                        academy=academy,
+                        lecture_info=lecture_info,
                         date=next_date,
-                        repeat_day=repeat_day,
                         start_time=start_time,
                         end_time=end_time,
-                        lecture_info=lecture_info,
+                        lecture_memo=lecture_memo,
                         teacher=teacher,
-                        auto_add = auto_add 
                     )
                     lecture.save()
                     lecture_ids.append(lecture.id)
@@ -718,16 +742,15 @@ class AddStudentsToLecture(graphene.Mutation):
         if user.is_anonymous:
             raise Exception("Log in to add students to a lecture.")
 
-        lecture = LectureModel.objects.get(id=lecture_id)
+        try:
+            lecture = LectureModel.objects.get(id=lecture_id)
+        except LectureModel.DoesNotExist:
+            raise Exception("Invalid lecture ID")
+        
         students = StudentProfileModel.objects.filter(user_id__in=student_ids)
 
-        # Check if students are already added
-        already_added_students = []
-        for student in students:
-            if student in lecture.students.all():
-                already_added_students.append(student.user_id)
-
-        # If any students are already added, raise an exception
+        # 이미 추가된 학생인지 확인 
+        already_added_students = [student.user_id for student in students if student in lecture.students.all()]
         if already_added_students:
             raise Exception(f"학생 id {already_added_students} 는 이미 해당강의에 수강신청했습니다")
 
@@ -745,51 +768,64 @@ class CreateMakeup(graphene.Mutation):
         date = graphene.Date(required=False)
         start_time = graphene.Time(required=False)
         end_time = graphene.Time(required=False)
-        lecture_info = graphene.String(required=False)
+        about = graphene.String(required=False)
         teacher_id = graphene.Int(required=False)
-        repeat_days = graphene.List(graphene.Int, required=False)
+        repeat_days = graphene.String(required=False)
         repeat_weeks = graphene.Int(required=False)
+        lecture_memo = graphene.String(required=False)
 
     lecture_ids = graphene.List(graphene.Int)
 
     @staticmethod
-    def mutate(root, info, student_ids, lecture_id=None, academy_id=None, date=None, start_time=None, end_time=None, lecture_info=None, teacher_id=None, repeat_days=None, repeat_weeks=None):
+    def mutate(root, info, student_ids, lecture_id=None, academy_id=None, date=None, start_time=None, end_time=None, about=None, teacher_id=None, repeat_days=None, repeat_weeks=None,lecture_memo=None):
         user = info.context.user
         if user.is_anonymous:
             raise Exception("Log in to add a lecture.")
         
         if lecture_id :
             lecture = LectureModel.objects.get(id=lecture_id)
+            lectures = [lecture]
         else:
-            if not all([academy_id, date, start_time, end_time, lecture_info, teacher_id, repeat_days, repeat_weeks]):
+            if not all([academy_id, date, start_time, end_time, about, teacher_id, repeat_days, repeat_weeks]):
                 raise Exception("강의를 생성하기 위한 정보를 전부 입력해주세요")
             
             academy = AcademyModel.objects.get(id=academy_id)
             teacher = TeacherProfileModel.objects.get(user_id=teacher_id)
             lectures = []
-            if -1 in repeat_days:
+            repeat_days_dict = json.loads(repeat_days)
+            if -1 in repeat_days_dict:
                 lecture = LectureModel(
-                    academy=academy,
+                    lecture_info=LectureInfoModel(
+                        academy=academy,
+                        repeat_day=repeat_days_dict,
+                        about=about,
+                        teacher=teacher,
+                    ),
                     date=date,
                     start_time=start_time,
                     end_time=end_time,
-                    lecture_info=lecture_info,
-                    teacher=teacher
+                    lecture_memo=lecture_memo,  # lecture_memo를 추가해야 하는 경우 수정
+                    teacher=teacher,
                 )
                 lecture.save()
                 lectures.append(lecture)
             else:
                 start_date = date - timedelta(days=date.weekday())
                 for week in range(repeat_weeks):
-                    for repeat_day in repeat_days:
+                    for repeat_day in repeat_days_dict:
                         next_date = start_date + timedelta(days=repeat_day)
                         lecture = LectureModel(
-                            academy=academy,
-                            date=next_date,
+                        lecture_info=LectureInfoModel(
+                                academy=academy,
+                                repeat_day=repeat_days_dict,
+                                about=about,
+                                teacher=teacher,
+                            ),
+                            date=date,
                             start_time=start_time,
                             end_time=end_time,
-                            lecture_info=lecture_info,
-                            teacher=teacher
+                            lecture_memo=lecture_memo,  # lecture_memo를 추가해야 하는 경우 수정
+                            teacher=teacher,
                         )
                         lecture.save()
                         lectures.append(lecture)
@@ -797,11 +833,11 @@ class CreateMakeup(graphene.Mutation):
 
         students = StudentProfileModel.objects.filter(user_id__in=student_ids)
         for lecture in lectures:
-            already_added_students = []
-            for student in students:
-                if student in lecture.students.all():
-                    already_added_students.append(student.user_id)
-
+            already_added_students = lecture.students.filter(id__in=student_ids).values_list('id', flat=True)
+            # already_added_students = []
+            # for student in students:
+            #     if student in lecture.students.all():
+            #         already_added_students.append(student.user_id)
             if already_added_students:
                 raise Exception(f"학생 id {already_added_students} 는 이미 해당강의에 수강신청했습니다")
 
@@ -812,16 +848,19 @@ class CreateMakeup(graphene.Mutation):
         return CreateMakeup(lecture_ids=lecture_ids)    
 
 class LectureInput(InputObjectType):
+    # lectureInfo
+    about = graphene.String(required=False)
+    repeat_days = graphene.String(required=False)
+    repeat_weeks = graphene.Int(required=False)
+    auto_add = graphene.Boolean(required=True)
+    # lecture 
     lecture_id = graphene.Int(required=True)
     student_ids = graphene.List(graphene.Int, required=True)
     date = graphene.Date(required=False)
     start_time = graphene.Time(required=False)
     end_time = graphene.Time(required=False)
-    lecture_info = graphene.String(required=False)
+    lecture_memo = graphene.String(required=False)
     teacher_id = graphene.Int(required=False)
-    repeat_days = graphene.List(graphene.Int, required=False)
-    repeat_weeks = graphene.Int(required=False)
-    auto_add = graphene.Boolean(required=True)
 
 class PutLecture(graphene.Mutation):
     class Arguments:

@@ -5,6 +5,28 @@ from django.db import migrations, models
 import django.db.models.deletion
 
 
+def clear_lecture_data(apps, schema_editor):
+    # 해당 테이블의 모든 데이터를 삭제하는 SQL 쿼리
+    clear_sql = """
+        DELETE FROM academy_lecture;
+        DELETE FROM academy_lecture_students;
+        DELETE FROM academy_lecturestudents;
+        DELETE FROM library_vook_reservation;
+        DELETE FROM user_lecturestudents;
+    """
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute(clear_sql)
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('academy', '0002_initial'),
+    ]
+
+    operations = [
+        migrations.RunSQL(clear_lecture_data),
+    ]
+
 class Migration(migrations.Migration):
 
     initial = True

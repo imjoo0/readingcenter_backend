@@ -2,6 +2,7 @@ from django.db import models
 from academy.models import Lecture
 from user.models import Student
 from library.models import Book
+from django.utils import timezone
 
 # Create your models here.
 class Attendance(models.Model):
@@ -59,3 +60,45 @@ class BookRecord(models.Model):
     lit_correct = models.IntegerField(null=True, blank=True)
     lit_date = models.DateField(verbose_name="lit 퀴즈푼 날짜", null=True, blank=True)
     month = models.IntegerField(null=True, blank=True)
+
+class MonthReport(models.Model):
+    student = models.ForeignKey(
+        Student,
+        verbose_name="학생", 
+        on_delete=models.CASCADE,
+        related_name='month_report'
+    )
+    origin = models.CharField(verbose_name="원번", max_length=20,null=False)
+    month = models.IntegerField(null=True, blank=True)
+    bc = models.IntegerField(null=True, blank=True)
+    wc = models.CharField(verbose_name="wc", max_length=45, null=True)
+    ar = models.CharField(verbose_name="ar", max_length=45, null=True)
+    wc_per_book = models.CharField(verbose_name="wc_per_book", max_length=45, null=True)
+    correct = models.CharField(verbose_name="correct", max_length=45, null=True)
+    update_time = models.CharField(verbose_name="update_time", max_length=45, null=False)
+
+class SummaryReport(models.Model):
+    student = models.ForeignKey(
+        Student,
+        verbose_name="학생", 
+        on_delete=models.CASCADE,
+        related_name='summary_report'
+    )
+    origin = models.CharField(verbose_name="원번", max_length=20,null=False)
+    recent_study_date = models.DateField(verbose_name="최근 학습 일", null=True, blank=True)
+    this_month_ar = models.FloatField(null=True, blank=True)
+    last_month_ar = models.FloatField(null=True, blank=True)
+    ar_diff = models.FloatField(null=True, blank=True)
+    this_month_wc = models.IntegerField(null=True, blank=True)
+    last_month_wc = models.IntegerField(null=True, blank=True)
+    total_wc = models.IntegerField(null=True, blank=True)
+    this_month_correct = models.IntegerField(null=True, blank=True)
+    last_month_correct = models.IntegerField(null=True, blank=True)
+    total_correct = models.IntegerField(null=True, blank=True)
+    this_month_bc = models.IntegerField(null=True, blank=True)
+    last_month_bc = models.IntegerField(null=True, blank=True)
+    total_bc = models.IntegerField(null=True, blank=True)
+    this_month_study_days = models.IntegerField(null=True, blank=True)
+    last_month_study_days = models.IntegerField(null=True, blank=True)
+    total_study_days = models.IntegerField(null=True, blank=True)
+    update_time = models.DateTimeField(default=timezone.now)
