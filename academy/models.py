@@ -1,5 +1,5 @@
 from django.db import models
-
+from datetime import date
 class Branch(models.Model):
     name = models.CharField(verbose_name="지점", max_length=50)
 
@@ -69,7 +69,9 @@ class LectureInfo(models.Model):
     about = models.TextField(verbose_name="강좌 설명")
     
     auto_add = models.BooleanField(default=False)
-    
+
+    created_date = models.DateField(default=date.today, verbose_name="생성된 날짜")
+
     def __str__(self):
         return self.lecture_info
 
@@ -77,29 +79,33 @@ class Lecture(models.Model):
     lecture_info = models.ForeignKey(
         LectureInfo,
         on_delete=models.CASCADE,
-        related_name='lectures'
+        # related_name='lectures'
+        related_name='lectureList'
     )
     academy = models.ForeignKey(
         Academy,
         verbose_name="학원",
-        related_name='lectures',
+        # related_name='lectures',
+        related_name='academy_lectures',
         on_delete=models.CASCADE,
         default=None
     )
     students = models.ManyToManyField(
         'user.Student',
         verbose_name="강좌 수강 학생들",
-        related_name='attended_lectures',
+        # related_name='attended_lectures',
+        related_name='enrolled_lectures',
         blank=True
     )
     teacher = models.ForeignKey(
         'user.Teacher',
         verbose_name="강좌 담당 선생님",
-        related_name='taught_lectures',
+        # related_name='taught_lectures',
+        related_name='teacher_lectures',
         on_delete=models.SET_NULL,
         null=True
     )    
     date = models.DateField(verbose_name="강좌 날짜")
     start_time = models.TimeField(verbose_name="강좌 시작 시간",default=None)
     end_time = models.TimeField(verbose_name="강좌 종료 시간",default=None)
-    lecture_memo = models.TextField(verbose_name="강좌 메모",default=None)
+    lecture_memo = models.TextField(verbose_name="보강 강좌 메모",default=None, null=True)

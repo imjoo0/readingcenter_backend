@@ -10,7 +10,8 @@ class Attendance(models.Model):
         Lecture, 
         verbose_name="강의",
         on_delete=models.CASCADE,
-        related_name='attendances'
+        # related_name='attendances'
+        related_name='attendance'
     )
     student = models.ForeignKey(
         Student,
@@ -71,10 +72,10 @@ class MonthReport(models.Model):
     origin = models.CharField(verbose_name="원번", max_length=20,null=False)
     month = models.IntegerField(null=True, blank=True)
     bc = models.IntegerField(null=True, blank=True)
-    wc = models.CharField(verbose_name="wc", max_length=45, null=True)
-    ar = models.CharField(verbose_name="ar", max_length=45, null=True)
-    wc_per_book = models.CharField(verbose_name="wc_per_book", max_length=45, null=True)
-    correct = models.CharField(verbose_name="correct", max_length=45, null=True)
+    wc = models.IntegerField(null=True, blank=True)
+    ar = models.FloatField(null=True, blank=True)
+    wc_per_book = models.FloatField(null=True, blank=True)
+    correct = models.IntegerField(null=True, blank=True)
     update_time = models.CharField(verbose_name="update_time", max_length=45, null=False)
 
 class SummaryReport(models.Model):

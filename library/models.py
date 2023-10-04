@@ -12,9 +12,9 @@ class Book(models.Model):
     title_lex = models.CharField(max_length=255, null=True)
     author_lex = models.CharField(max_length=255, null=True)
     FNF = (
-        (0, 'F_NF'),
-        (1, 'F'),
-        (2, 'NF'),
+        ('0', 'F_NF'),
+        ('1', 'F'),
+        ('2', 'NF'),
     )
     fnf = models.CharField(
         verbose_name="FNF", 
@@ -23,11 +23,11 @@ class Book(models.Model):
         null=True
     )
     IL = (
-        (0, 'IL'),
-        (1, 'IL_LG'),
-        (2, 'IL_MG'),
-        (3, 'IL_MG+'),
-        (4, 'IL_UG'),
+        ('0', 'IL'),
+        ('1', 'IL_LG'),
+        ('2', 'IL_MG'),
+        ('3', 'IL_MG+'),
+        ('4', 'IL_UG'),
     )
     il = models.CharField(
         verbose_name="IL", 
@@ -36,9 +36,9 @@ class Book(models.Model):
         null=True
     )
     LITPRO = (
-        (0, 'LITPRO'),
-        (1, 'LITPRO_Y'),
-        (2, 'LITPRO_N'),
+        ('0', 'LITPRO'),
+        ('1', 'LITPRO_Y'),
+        ('2', 'LITPRO_N'),
     )
     litpro = models.CharField(
         verbose_name="LITPRO", 
@@ -47,14 +47,14 @@ class Book(models.Model):
         default=0
     )
     LEXILE_CODE_AR = (
-        (0, 'LEXILE_CODE_AR'),
-        (1, 'LEXILE_CODE_AR_AD'),
-        (2, 'LEXILE_CODE_AR_GN'),
-        (3, 'LEXILE_CODE_AR_HL'),
-        (4, 'LEXILE_CODE_AR_IG'),
-        (5, 'LEXILE_CODE_AR_NC'),
-        (6, 'LEXILE_CODE_AR_NP'),
-        (7, 'LEXILE_CODE_AR_RA'),
+        ('0', 'LEXILE_CODE_AR'),
+        ('1', 'LEXILE_CODE_AR_AD'),
+        ('2', 'LEXILE_CODE_AR_GN'),
+        ('3', 'LEXILE_CODE_AR_HL'),
+        ('4', 'LEXILE_CODE_AR_IG'),
+        ('5', 'LEXILE_CODE_AR_NC'),
+        ('6', 'LEXILE_CODE_AR_NP'),
+        ('7', 'LEXILE_CODE_AR_RA'),
     )
     lexile_code_ar = models.CharField(
         verbose_name="LEXILE_CODE_AR", 
@@ -63,14 +63,14 @@ class Book(models.Model):
         null=True
     )
     LEXILE_CODE_LEX = (
-        (0, 'LEXILE_CODE_LEX'),
-        (1, 'LEXILE_CODE_LEX_AD'),
-        (2, 'LEXILE_CODE_LEX_GN'),
-        (3, 'LEXILE_CODE_LEX_HL'),
-        (4, 'LEXILE_CODE_LEX_IG'),
-        (5, 'LEXILE_CODE_LEX_NC'),
-        (6, 'LEXILE_CODE_LEX_NP'),
-        (7, 'LEXILE_CODE_LEX_RA'),
+        ('0', 'LEXILE_CODE_LEX'),
+        ('1', 'LEXILE_CODE_LEX_AD'),
+        ('2', 'LEXILE_CODE_LEX_GN'),
+        ('3', 'LEXILE_CODE_LEX_HL'),
+        ('4', 'LEXILE_CODE_LEX_IG'),
+        ('5', 'LEXILE_CODE_LEX_NC'),
+        ('6', 'LEXILE_CODE_LEX_NP'),
+        ('7', 'LEXILE_CODE_LEX_RA'),
     )
     lexile_code_lex = models.CharField(
         verbose_name="LEXILE_CODE_LEX", 
@@ -112,6 +112,7 @@ class BookRental(models.Model):
     memo = models.TextField(blank=True, null=True)
 
 class BookReservation(models.Model):
-    lecture = models.ForeignKey(Lecture, on_delete=models.CASCADE, related_name='book_reservations')
+    # lecture = models.ForeignKey(Lecture, on_delete=models.CASCADE, related_name='book_reservations')
+    lecture = models.ForeignKey(Lecture, on_delete=models.CASCADE, related_name='book_reservation_list')
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='book_reservations')
     books = models.ManyToManyField(BookInventory, related_name='reservations')
