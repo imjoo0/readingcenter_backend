@@ -1,18 +1,21 @@
-import jwt 
 from django.db.models import Sum, Q
+from django.db import transaction
 from django.utils import timezone
 from datetime import datetime, timedelta
 from django.conf import settings
-from django.db import transaction
+from django.contrib.auth import get_user_model
+
 import graphene
 from graphene_file_upload.scalars import Upload
-import pandas as pd
 from graphene_django import DjangoObjectType
 from graphene import InputObjectType
 from graphene import Interface
-from django.contrib.auth import get_user_model
+
+import jwt 
 import json
 import pytz
+import pandas as pd
+from collections import defaultdict
 
 from user.models import (
     User as UserModel,
@@ -307,7 +310,10 @@ class BookType(DjangoObjectType):
         book_records = BookRecordModel.objects.filter(book=self)
         return book_records
 
-  
+class DateStudentsType(graphene.ObjectType):
+    date = graphene.Date(required=True)
+    students = graphene.List(StudentWithLectureType, required=True)
+
 # Mutation 
 class CreateAttendance(graphene.Mutation):
     attendance = graphene.Field(AttendanceType)
@@ -845,135 +851,6 @@ class CreateMakeup(graphene.Mutation):
 
         return CreateMakeup(lecture=lecture)
 
-# class LectureInput(InputObjectType):
-#     # lectureInfo
-#     about = graphene.String(required=False)
-#     repeat_days = graphene.String(required=False)
-#     repeat_weeks = graphene.Int(required=False)
-#     auto_add = graphene.Boolean(required=False)
-#     # lecture 
-#     lecture_id = graphene.Int(required=True)
-#     student_ids = graphene.List(graphene.Int, required=True)
-#     date = graphene.Date(required=False)
-#     start_time = graphene.Time(required=False)
-#     end_time = graphene.Time(required=False)
-#     lecture_memo = graphene.String(required=False)
-#     academy_id = graphene.Int(required=False)
-#     teacher_id = graphene.Int(required=False)
-#     # LectureInfo 와 엮여있는 전체 lecture를 다 수정하려는 경우 
-#     change_all = graphene.Boolean(required=True)
-
-# def daterange(start_date, end_date, delta):
-#     current_date = start_date
-#     while current_date <= end_date:
-#         yield current_date
-#         current_date += delta
-
-# class PutLecture(graphene.Mutation):
-#     class Arguments:
-#         input_data = LectureInput(required=True)
-
-#     lecture = graphene.Field(LectureType)
-
-#     @staticmethod
-#     def mutate(root, info, input_data):
-#         user = info.context.user
-
-#         if user.is_anonymous:
-#             raise Exception("Log in to add a lecture.")
-
-#         lecture_id = input_data.get('lecture_id')
-#         try:
-#             lecture = LectureModel.objects.get(pk=lecture_id)
-#         except LectureModel.DoesNotExist:
-#             raise Exception(f"Lecture with ID {lecture_id} does not exist.")
-        
-#         # lecture 와 연결된 모든 lecture를 변경 하는 건지 확인 
-#         change_all = input_data.get('change_all', False)
-#         lecture_info = lecture.lecture_info
-#         lecture_info.about = input_data.get('about',lecture_info.about)
-        
-#         if change_all:
-#             # 같은 lecture_info 를 가진 lecture 에 대해 수정 작업 실시 
-#             lectures_to_update = LectureModel.objects.filter(lecture_info=lecture_info)
-#             for lecture_to_update in lectures_to_update:
-#                 # lecture_to_update.date = input_data.get('date', lecture_to_update.date)
-#                 lecture_to_update.start_time = input_data.get('start_time', lecture_to_update.start_time)
-#                 lecture_to_update.end_time = input_data.get('end_time', lecture_to_update.end_time)
-#                 # lecture_to_update.lecture_memo = input_data.get('lecture_memo', lecture_to_update.lecture_memo)
-#                 new_teacher_id = input_data.get('teacher_id')
-#                 if new_teacher_id:
-#                     lecture_to_update.teacher = TeacherProfileModel.objects.get(user_id=new_teacher_id)
-#                 lecture_to_update.save()
-                
-#                 # Update repeat_weeks if provided
-#                 repeat_weeks = input_data.get('repeat_weeks')
-#                 if repeat_weeks is not None:
-#                     repeat_weeks = int(repeat_weeks)
-#                     if repeat_weeks < lecture_info.repeat_weeks:
-#                         today = timezone.now().astimezone(pytz.timezone('Asia/Seoul')).date()
-#                         end_date = today + timedelta(weeks=repeat_weeks)
-#                         LectureModel.objects.filter(
-#                             lecture_info=lecture_info,
-#                             date__gt=end_date
-#                         ).delete()
-#                     elif repeat_weeks > lecture_info.repeat_weeks:
-#                         today = timezone.now().astimezone(pytz.timezone('Asia/Seoul')).date()
-#                         start_date = today + timedelta(weeks=lecture_info.repeat_weeks)
-#                         end_date = today + timedelta(weeks=repeat_weeks)
-#                         for current_date in daterange(start_date, end_date, timedelta(weeks=1)):
-#                             if current_date.weekday() in lecture_info.repeat_day:
-#                                 new_lecture = LectureModel(
-#                                     academy=lecture_info.academy,
-#                                     date=current_date,
-#                                     start_time=lecture_to_update.start_time,
-#                                     end_time=lecture_to_update.end_time,
-#                                     lecture_memo=lecture_to_update.lecture_memo,
-#                                     teacher=lecture_to_update.teacher,
-#                                     lecture_info=lecture_info,
-#                                 )
-#                                 new_lecture.save()
-        
-#         else:
-#             # Update only the current lecture
-#             lecture.date = input_data.get('date', lecture.date)
-#             lecture.start_time = input_data.get('start_time', lecture.start_time)
-#             lecture.end_time = input_data.get('end_time', lecture.end_time)
-#             lecture.lecture_memo = input_data.get('lecture_memo', lecture.lecture_memo)
-#             new_teacher_id = input_data.get('teacher_id')
-#             if new_teacher_id:
-#                 lecture.teacher = TeacherProfileModel.objects.get(user_id=new_teacher_id)
-#             repeat_weeks = input_data.get('repeat_weeks')
-#             if repeat_weeks is not None:
-#                 repeat_weeks = int(repeat_weeks)
-#                 if repeat_weeks < lecture.lecture_info.repeat_weeks:
-#                     today = timezone.now().astimezone(pytz.timezone('Asia/Seoul')).date()
-#                     end_date = today + timedelta(weeks=repeat_weeks)
-#                     LectureModel.objects.filter(
-#                         lecture_info=lecture.lecture_info,
-#                         date__gt=end_date
-#                     ).delete()
-#                 elif repeat_weeks > lecture.lecture_info.repeat_weeks:
-#                     today = timezone.now().astimezone(pytz.timezone('Asia/Seoul')).date()
-#                     start_date = today + timedelta(weeks=lecture.lecture_info.repeat_weeks)
-#                     end_date = today + timedelta(weeks=repeat_weeks)
-#                     for current_date in daterange(start_date, end_date, timedelta(weeks=1)):
-#                         if current_date.weekday() in lecture.lecture_info.repeat_day:
-#                             new_lecture = LectureModel(
-#                                 academy=lecture.lecture_info.academy,
-#                                 date=current_date,
-#                                 start_time=lecture.start_time,
-#                                 end_time=lecture.end_time,
-#                                 lecture_memo=lecture.lecture_memo,
-#                                 teacher=lecture.teacher,
-#                                 lecture_info=lecture.lecture_info,
-#                             )
-#                             new_lecture.save()
-        
-#         # Save the updated lecture
-#         lecture.save()
-#         return PutLecture(lecture=lecture)
-
 class UpdateLectureInfo(graphene.Mutation):
     class Arguments:
          # 필수 인자
@@ -1030,7 +907,8 @@ class UpdateLectureInfo(graphene.Mutation):
             raise Exception(str(e))
 
         lecture_info.about = kwargs.get('about', lecture_info.about) 
-
+        lecture_info.auto_add = kwargs.get('auto_add', lecture_info.auto_add)
+        
         # 기존의 repeat_days를 변경하려는 경우
         if set(new_repeat_days) != set(old_repeat_days):
             print('기존의 repeat_days를 변경하려는 경우')
@@ -1054,14 +932,12 @@ class UpdateLectureInfo(graphene.Mutation):
             else:
                 # auto_add True 이면 created_date와 repeat_weeks를 4로 변경 , auto_add값도 true 로 변경 
                 lecture_info.repeat_weeks = kwargs.get('repeat_weeks', lecture_info.repeat_weeks) # 새로 입력 받은 값 혹은 기존 repeat_weeks로 진행 
-                lecture_info.auto_add = kwargs.get('auto_add', lecture_info.auto_add)
                 if lecture_info.auto_add:
                     lecture_info.created_date = today
                     lecture_info.repeat_weeks = 4
-                # 오늘 날짜와 반복하는 날짜의 요일이 동일할 경우 오늘도 추가해야 하는 이슈 ! 
                 for week in range(lecture_info.repeat_weeks):
                     for repeat_day in new_repeat_days:
-                        next_date = date + timedelta(days=(int(repeat_day) - old_lecture.date.weekday() + 7) % 7) + timedelta(weeks=week)
+                        next_date = date + timedelta(days=(int(repeat_day) - date.weekday() + 7) % 7) + timedelta(weeks=week)
                         new_lecture = LectureModel(
                             academy=new_academy,
                             lecture_info=lecture_info,
@@ -1074,48 +950,109 @@ class UpdateLectureInfo(graphene.Mutation):
                         new_lecture.save()
                         new_lecture.students.set(new_students)
                     
-        # 그냥 auto add / repeat_weeks만 고려 하면 됨 
+        # 기존의 repeat_days를 변경하지 않고 반복 주기만 변경하는 경우
         else:
             print('기존의 repeat_days를 변경하지 않고 반복 주기만 변경하는 경우')
-            if kwargs.get('auto_add', False):
-                LectureModel.objects.filter(lecture_info=lecture_info, date__gte=date).delete()
-                lecture_info.created_date = old_lecture.date
-                lecture_info.repeat_weeks = 4
-                lecture_info.auto_add = True
-                for week in range(lecture_info.repeat_weeks):
-                    for repeat_day in new_repeat_days:
-                        next_date = old_lecture.date + timedelta(days=(int(repeat_day) - old_lecture.date.weekday() + 7) % 7) + timedelta(weeks=week)
-                        new_lecture = LectureModel(
-                            academy=new_academy,
-                            lecture_info=lecture_info,
-                            date=next_date,
-                            start_time=kwargs.get('start_time', old_lecture.start_time),
-                            end_time=kwargs.get('end_time', old_lecture.end_time),
-                            teacher=new_teacher,
-                            lecture_memo=None
-                        )
-                        new_lecture.save()
-                        new_lecture.students.set(new_students)
+            # 단일 수업 변경 
+            if -1 in new_repeat_days:
+                lecture_info.repeat_weeks = 1
+                lecture_info.auto_add = False
+                old_lecture.date = date
+                old_lecture.start_time = kwargs.get('start_time', old_lecture.start_time)
+                old_lecture.end_time = kwargs.get('end_time', old_lecture.end_time)
+                old_lecture.academy = new_academy
+                old_lecture.teacher = new_teacher
+                old_lecture.lecture_memo = kwargs.get('lecture_memo', old_lecture.lecture_memo)
+                old_lecture.save()
+                old_lecture.students.set(new_students)
             else:
-                if kwargs['repeat_weeks'] < lecture_info.repeat_weeks:
-                    LectureModel.objects.filter(lecture_info=lecture_info, date__gte=date + timedelta(weeks=kwargs['repeat_weeks'])).delete()
-                elif kwargs['repeat_weeks'] > lecture_info.repeat_weeks:
-                    for week in range(lecture_info.repeat_weeks, kwargs['repeat_weeks']):
-                        next_date = old_lecture.date + timedelta(weeks=week)
-                        new_lecture = LectureModel(
-                            academy=new_academy,
-                            lecture_info=lecture_info,
-                            date=next_date,
-                            start_time=kwargs.get('start_time', old_lecture.start_time),
-                            end_time=kwargs.get('end_time', old_lecture.end_time),
-                            teacher=new_teacher,
-                            lecture_memo=None
-                        )
-                        new_lecture.save()
-                        new_lecture.students.set(new_students)
-            
+                if lecture_info.auto_add:
+                    lecture_info.created_date = date
+                    lecture_info.repeat_weeks = 4
+                    for week in range(lecture_info.repeat_weeks):
+                        for repeat_day in new_repeat_days:
+                            next_date = old_lecture.date + timedelta(days=(int(repeat_day) - old_lecture.date.weekday() + 7) % 7) + timedelta(weeks=week)
+                            new_lecture = LectureModel(
+                                academy=new_academy,
+                                lecture_info=lecture_info,
+                                date=next_date,
+                                start_time=kwargs.get('start_time', old_lecture.start_time),
+                                end_time=kwargs.get('end_time', old_lecture.end_time),
+                                teacher=new_teacher,
+                                lecture_memo=None
+                            )
+                            new_lecture.save()
+                            new_lecture.students.set(new_students)
+                else:
+                    if kwargs['repeat_weeks'] < lecture_info.repeat_weeks:
+                        LectureModel.objects.filter(lecture_info=lecture_info, date__gte=date + timedelta(weeks=kwargs['repeat_weeks'])).delete()
+                    elif kwargs['repeat_weeks'] > lecture_info.repeat_weeks:
+                        for week in range(lecture_info.repeat_weeks, kwargs['repeat_weeks']):
+                            next_date = old_lecture.date + timedelta(weeks=week)
+                            new_lecture = LectureModel(
+                                academy=new_academy,
+                                lecture_info=lecture_info,
+                                date=next_date,
+                                start_time=kwargs.get('start_time', old_lecture.start_time),
+                                end_time=kwargs.get('end_time', old_lecture.end_time),
+                                teacher=new_teacher,
+                                lecture_memo=None
+                            )
+                            new_lecture.save()
+                            new_lecture.students.set(new_students)
         lecture_info.save()
-        return UpdateLectureInfo(success=True, message="해당 강좌의 정보가 전부 변경되었습니다.")
+        return UpdateLectureInfo(success=True, message="해당 강좌의 정보가 전부 수정되었습니다.")
+    
+class UpdateLecture(graphene.Mutation):
+    class Arguments:
+         # 필수 인자
+        lecture_id = graphene.Int(required=True)
+        date = graphene.Date(required=True) 
+        lecture_memo = graphene.String(required=False)
+        student_ids = graphene.List(graphene.Int, required=True)
+        start_time = graphene.Time(required=True)
+        end_time = graphene.Time(required=True)
+        academy_id = graphene.Int(required=True)
+        teacher_id = graphene.Int(required=True)
+
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    @staticmethod
+    @transaction.atomic  # 트랜잭션 적용
+    def mutate(root, info, lecture_id, date, **kwargs):
+        user = info.context.user
+        if user.is_anonymous:
+            raise Exception("Log in to update a lecture info.")
+
+        try:
+            lecture =LectureModel.objects.select_for_update().get(id=lecture_id)
+        except LectureModel.DoesNotExist:
+            raise Exception("기존 강좌 정보가 존재하지 않습니다.")
+        
+        try:
+            if kwargs['academy_id'] != lecture.academy.id:
+                lecture.academy = AcademyModel.objects.get(id=kwargs['academy_id'])
+            if kwargs['teacher_id'] != lecture.teacher.user_id:
+                lecture.teacher = TeacherProfileModel.objects.get(user_id=kwargs['teacher_id'])
+            if 'student_ids' in kwargs:
+                old_student_ids = set(lecture.students.values_list('user_id', flat=True))
+                new_student_ids_set = set(kwargs['student_ids'])
+                print(old_student_ids)
+                print(new_student_ids_set)
+                if old_student_ids != new_student_ids_set:
+                    new_students = StudentProfileModel.objects.filter(user_id__in=kwargs['student_ids'])
+                    lecture.students.set(new_students)
+        except (AcademyModel.DoesNotExist, TeacherProfileModel.DoesNotExist, StudentProfileModel.DoesNotExist) as e:
+            raise Exception(str(e))
+
+        lecture.date = date
+        lecture.lecture_memo = kwargs.get('lecture_memo', lecture.lecture_memo) 
+        lecture.start_time = kwargs.get('start_time', lecture.start_time) 
+        lecture.end_time = kwargs.get('end_time', lecture.end_time) 
+
+        lecture.save()
+        return UpdateLecture(success=True, message="해당 강좌의 정보가 수정되었습니다.")
     
 class DeleteLecture(graphene.Mutation):
     class Arguments:
@@ -1589,6 +1526,9 @@ class Query(graphene.ObjectType):
     get_student_lecture_history = graphene.List(AttendanceType, academyId=graphene.Int(required=True), studentId=graphene.Int(required=True))
     get_lecture_memo = graphene.List(AttendanceType,lectureId = graphene.ID(required=True))
     get_customattendance = graphene.List(StudentType, academyId=graphene.Int(required=True), date=graphene.Date(required=True), entryTime=graphene.String(), endTime=graphene.String())
+    
+    get_lectures_by_academy_and_month = graphene.List(LectureType, academy_id=graphene.Int(required=True), month=graphene.Int(required=True))
+    get_lecturestudents_by_academy_and_month = graphene.List(DateStudentsType, academy_id=graphene.Int(required=True), month=graphene.Int(required=True))
 
     get_lectures_by_academy_and_date = graphene.List(LectureType, academy_id=graphene.Int(required=True), date=graphene.Date(required=True))
     get_lectures_by_academy_and_date_students = graphene.List(StudentWithLectureType, academy_id=graphene.Int(required=True), date=graphene.Date(required=True))
@@ -1623,6 +1563,34 @@ class Query(graphene.ObjectType):
     def resolve_all_lectures(self, info, academyId):
         return LectureModel.objects.filter(academy_id=academyId)
     
+    def resolve_get_lectures_by_academy_and_month(root, info, academy_id, month):
+        current_year = datetime.now().year
+        lectures = LectureModel.objects.filter(academy_id=academy_id, date__month=month, date__year=current_year)
+        return lectures
+    
+    def resolve_get_lecturestudents_by_academy_and_month(root, info, academy_id, month):
+        current_year = datetime.now().year
+        lectures = LectureModel.objects.filter(academy_id=academy_id, date__month=month, date__year=current_year)
+
+        # 각 날짜별 학생들을 저장할 딕셔너리
+        students_by_date = defaultdict(list)
+
+        for lecture in lectures:
+            date = lecture.date
+            students = lecture.students.all()
+            for student in students:
+                # 중복 학생을 방지하기 위해 학생이 해당 날짜의 리스트에 없으면 추가
+                if student not in students_by_date[date]:
+                    swl = StudentWithLectureType(student=student, lecture=lecture)
+                    students_by_date[date].append(swl)
+                    
+        # 결과를 DateStudentsType 형태로 변환
+        result = []
+        for date, swl in students_by_date.items():
+            result.append(DateStudentsType(date=date, students=swl))
+
+        return result
+       
     def resolve_get_lectures_by_academy_and_date(root, info, academy_id, date):
         lectures = LectureModel.objects.filter(academy_id=academy_id, date=date)
         for lecture in lectures:
@@ -1821,6 +1789,7 @@ class Mutation(graphene.ObjectType):
 
     create_lecture = CreateLecture.Field()
     update_lecture_info = UpdateLectureInfo.Field()
+    update_lecture = UpdateLecture.Field()
     delete_lecture = DeleteLecture.Field()
     delete_lecture_info = DeleteLectureInfo.Field()
 
