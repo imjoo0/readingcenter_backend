@@ -227,3 +227,21 @@ LOGGING = {
         'level': 'DEBUG',  # 필요한 로그 레벨로 변경 가능 (DEBUG, INFO, WARNING, ERROR 등)
     },
 }
+
+# 스케줄러 돌리기 
+# Celery configurations
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Asia/Seoul'
+
+# settings.py
+CELERY_BEAT_SCHEDULE = {
+    'create_monthly_lectures': {
+        'task': 'academy.tasks.create_monthly_lectures',
+        'schedule': timedelta(days=30),
+        'args': ()
+    },
+}
