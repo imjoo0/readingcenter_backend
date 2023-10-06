@@ -9,7 +9,6 @@ class UserCategory(models.Model):
     def __str__(self):
         return self.name
 
-
 class UserManager(BaseUserManager):
     def create_user(self, username, password=None, **extra_fields):
         if not username:

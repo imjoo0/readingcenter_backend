@@ -3,20 +3,19 @@ from academy.models import Lecture
 from user.models import Student
 from library.models import Book
 from django.utils import timezone
-
+from datetime import date 
 # Create your models here.
 class Attendance(models.Model):
     lecture = models.ForeignKey(
         Lecture, 
         verbose_name="강의",
         on_delete=models.CASCADE,
-        # related_name='attendances'
         related_name='attendance'
     )
     student = models.ForeignKey(
         Student,
         verbose_name="학생", 
-        on_delete=models.CASCADE,
+        on_delete=models.DO_NOTHING,
         related_name='attendances'
     )
     entry_time = models.DateTimeField(verbose_name="입장시간", null=True, blank=True)
@@ -103,3 +102,29 @@ class SummaryReport(models.Model):
     last_month_study_days = models.IntegerField(null=True, blank=True)
     total_study_days = models.IntegerField(null=True, blank=True)
     update_time = models.DateTimeField(default=timezone.now)
+
+class RecommendFiction(models.Model):
+    student = models.ForeignKey(
+        Student,
+        verbose_name="학생",
+        on_delete=models.CASCADE,
+        related_name='recommended_fictions'
+    )
+    pkg = models.CharField(verbose_name="추천픽션 패키지", max_length=255)
+    created_at = models.DateField(verbose_name="패키지 선정 날짜", default=date.today, null=True, blank=True)
+
+    def __str__(self):
+        return f"Recommended fiction for {self.student.kor_name}"
+
+class RecommendNonFiction(models.Model):
+    student = models.ForeignKey(
+        Student,
+        verbose_name="학생",
+        on_delete=models.CASCADE,
+        related_name='recommended_nonfictions'
+    )
+    pkg = models.CharField(verbose_name="추천논픽션 패키지", max_length=255)
+    created_at = models.DateField(verbose_name="패키지 선정 날짜", default=date.today, null=True, blank=True)
+
+    def __str__(self):
+        return f"Recommended non-fiction for {self.student.kor_name}"

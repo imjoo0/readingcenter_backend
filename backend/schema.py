@@ -14,6 +14,7 @@ from graphene import Interface
 import jwt 
 import json
 import pytz
+import copy
 import pandas as pd
 from collections import defaultdict
 
@@ -38,7 +39,9 @@ from library.models import(
 )
 from student.models import(
     BookRecord as BookRecordModel,
-    Attendance as AttendanceModel
+    Attendance as AttendanceModel,
+    SummaryReport as SummaryReportModel,
+    MonthReport as MonthReportModel
 ) 
 
 from graphene_django.views import GraphQLView
@@ -313,6 +316,14 @@ class BookType(DjangoObjectType):
 class DateStudentsType(graphene.ObjectType):
     date = graphene.Date(required=True)
     students = graphene.List(StudentWithLectureType, required=True)
+
+class SummaryReportType(DjangoObjectType):
+    class Meta:
+        model = SummaryReportModel
+
+class MonthReportType(DjangoObjectType):
+    class Meta:
+        model = MonthReportModel
 
 # Mutation 
 class CreateAttendance(graphene.Mutation):
@@ -687,6 +698,19 @@ class DeleteStudentBookReservations(graphene.Mutation):
         # 삭제된 도서 ID 리스트를 반환
         return DeleteStudentBookReservations(deleted_book_ids=deleted_book_ids)
 
+def create_and_save_lecture(academy, lecture_info, date, start_time, end_time, lecture_memo, teacher, lecture_ids):
+    lecture = LectureModel(
+        academy=academy,
+        lecture_info=lecture_info,
+        date=date,
+        start_time=start_time,
+        end_time=end_time,
+        lecture_memo=lecture_memo,
+        teacher=teacher,
+    )
+    lecture.save()
+    lecture_ids.append(lecture.id)
+
 class CreateLecture(graphene.Mutation):
     class Arguments:
         # lectureInfo 
@@ -710,55 +734,46 @@ class CreateLecture(graphene.Mutation):
         if user.is_anonymous:
             raise Exception("Log in to add a lecture.")
         
-        academy = AcademyModel.objects.get(id=academy_id)
-        teacher = TeacherProfileModel.objects.get(user_id=teacher_id)
+        try:
+            academy = AcademyModel.objects.get(id=academy_id)
+            teacher = TeacherProfileModel.objects.get(user_id=teacher_id)
+        except (AcademyModel.DoesNotExist, TeacherProfileModel.DoesNotExist):
+            raise Exception("Academy or Teacher not found.")
+        
         # GraphQL에서 넘어온 문자열 형태의 JSON을 딕셔너리로 파싱
-        repeat_days_dict = json.loads(repeat_days)
+        try:
+            repeat_days_dict = json.loads(repeat_days)
+        except json.JSONDecodeError:
+            raise Exception("Invalid JSON format for repeat_days.")
+
         lecture_ids = []
 
         lecture_info = LectureInfoModel(
             repeat_day=repeat_days_dict,
             about=about,
-            auto_add = auto_add
+            auto_add = auto_add,
+            repeat_weeks = repeat_weeks
         )
-        lecture_info.save()
+
         if auto_add:
-            repeat_weeks = 4
+            lecture_info.repeat_weeks = 4
+            lecture_info.created_date = date
+
+        lecture_info.save()
 
         if -1 in repeat_days_dict.get("repeat_days", []):
-            lecture = LectureModel(
-                academy=academy,
-                lecture_info=lecture_info,
-                date=date,
-                start_time=start_time,
-                end_time=end_time,
-                lecture_memo=lecture_memo,
-                teacher=teacher
-            )
-            lecture.save()
-            lecture_ids.append(lecture.id)
+            create_and_save_lecture(academy, lecture_info, date, start_time, end_time, lecture_memo, teacher, lecture_ids)
         else:
-            start_date = date
             # repeat_days에 있는 각 요일에 대해 수업 생성
             # 주의 해야 할 사항 : date 요일이 repeat_day와 동일한 경우 -> 주 단위가 한 주 빠르게 생성되게 된다. 
             # 예_ 수요일에 월화수 2주차 수업을 만든경우 수(만든 날짜) / 1주차 월화수 / 2주차 월화
             for repeat_day in repeat_days_dict.get("repeat_days", []):
                 for week in range(repeat_weeks): 
                     # 시작 날짜부터 해당 요일까지의 차이 계산
-                    days_difference = (repeat_day - start_date.weekday() + 7) % 7
+                    days_difference = (repeat_day - date.weekday() + 7) % 7
                     # 수업 날짜 설정
-                    lecture_date = start_date + timedelta(days=days_difference) + timedelta(weeks=week)
-                    lecture = LectureModel(
-                        academy=academy,
-                        lecture_info=lecture_info,
-                        date=lecture_date,
-                        start_time=start_time,
-                        end_time=end_time,
-                        lecture_memo=lecture_memo,
-                        teacher=teacher,
-                    )
-                    lecture.save()
-                    lecture_ids.append(lecture.id)
+                    lecture_date = date + timedelta(days=days_difference) + timedelta(weeks=week)
+                    create_and_save_lecture(academy, lecture_info, lecture_date, start_time, end_time, lecture_memo, teacher, lecture_ids)
 
         return CreateLecture(lecture_ids=lecture_ids)
 
@@ -891,8 +906,6 @@ class UpdateLectureInfo(graphene.Mutation):
         except LectureModel.DoesNotExist:
             raise Exception("기존 강좌 정보가 존재하지 않습니다.")
         
-        seoul_timezone = pytz.timezone('Asia/Seoul')
-        today = datetime.now(seoul_timezone).date()
         old_repeat_days = lecture_info.repeat_day.get("repeat_days", [])
         new_repeat_days = repeat_days_dict.get("repeat_days", [])
         
@@ -933,7 +946,7 @@ class UpdateLectureInfo(graphene.Mutation):
                 # auto_add True 이면 created_date와 repeat_weeks를 4로 변경 , auto_add값도 true 로 변경 
                 lecture_info.repeat_weeks = kwargs.get('repeat_weeks', lecture_info.repeat_weeks) # 새로 입력 받은 값 혹은 기존 repeat_weeks로 진행 
                 if lecture_info.auto_add:
-                    lecture_info.created_date = today
+                    lecture_info.created_date = date
                     lecture_info.repeat_weeks = 4
                 for week in range(lecture_info.repeat_weeks):
                     for repeat_day in new_repeat_days:
@@ -1054,6 +1067,60 @@ class UpdateLecture(graphene.Mutation):
         lecture.save()
         return UpdateLecture(success=True, message="해당 강좌의 정보가 수정되었습니다.")
     
+class UpdateLectureStudents(graphene.Mutation):
+    class Arguments:
+         # 필수 인자
+        lecture_id = graphene.Int(required=True)
+        student_id = graphene.ID(required=True)
+        date = graphene.Date(required=True) 
+
+        lecture_memo = graphene.String(required=False)
+        start_time = graphene.Time(required=True)
+        end_time = graphene.Time(required=True)
+        academy_id = graphene.Int(required=True)
+        teacher_id = graphene.Int(required=True)
+
+    success = graphene.Boolean()
+    message = graphene.String()
+
+    @staticmethod
+    def mutate(root, info, lecture_id,student_id, date, **kwargs):
+        user = info.context.user
+        if user.is_anonymous:
+            raise Exception("Log in to update a lecture info.")
+
+        # 1. lecture_id가 90인 Lecture 인스턴스를 가져옵니다.
+        try:
+            original_lecture = LectureModel.objects.get(id=lecture_id)
+        except LectureModel.DoesNotExist:
+            raise Exception("Lecture not found.")
+
+        if not original_lecture.students.filter(user_id=student_id).exists():
+            raise Exception("Student is not enrolled in the lecture.")
+        
+        # 2. 그 인스턴스를 복사하여 새로운 Lecture 인스턴스를 생성합니다.
+        new_lecture = copy.deepcopy(original_lecture)
+        new_lecture.pk = None 
+        new_lecture.save()
+        
+        try:
+            if kwargs['academy_id'] != original_lecture.academy.id:
+                new_lecture.academy = AcademyModel.objects.get(id=kwargs['academy_id'])
+            if kwargs['teacher_id'] != original_lecture.teacher.user_id:
+                new_lecture.teacher = TeacherProfileModel.objects.get(user_id=kwargs['teacher_id'])
+        except (AcademyModel.DoesNotExist, TeacherProfileModel.DoesNotExist) as e:
+            raise Exception(str(e))
+
+        new_lecture.date = date
+        new_lecture.lecture_memo = kwargs.get('lecture_memo', original_lecture.lecture_memo) 
+        new_lecture.start_time = kwargs.get('start_time', original_lecture.start_time) 
+        new_lecture.end_time = kwargs.get('end_time', original_lecture.end_time) 
+
+        new_lecture.students.add(student_id)
+        original_lecture.students.remove(student_id)
+        new_lecture.save()
+        return UpdateLecture(success=True, message="해당 강좌의 정보가 수정되었습니다.")
+  
 class DeleteLecture(graphene.Mutation):
     class Arguments:
         id = graphene.ID(required=True)
@@ -1536,6 +1603,10 @@ class Query(graphene.ObjectType):
     # 도서 대여 
     get_student_rental_status = graphene.List(BookRentalType,student_id=graphene.ID(required=False),book_id=graphene.ID(required=False))
     
+    # 학습 리포트 
+    get_summary_report = graphene.Field(SummaryReportType, student_id=graphene.Int(required=True))
+    get_month_reports = graphene.List(MonthReportType, student_id=graphene.Int(required=True))
+    
     def resolve_me(self, info):
         user = info.context.user
         if user.is_authenticated:
@@ -1583,7 +1654,7 @@ class Query(graphene.ObjectType):
                 if student not in students_by_date[date]:
                     swl = StudentWithLectureType(student=student, lecture=lecture)
                     students_by_date[date].append(swl)
-                    
+
         # 결과를 DateStudentsType 형태로 변환
         result = []
         for date, swl in students_by_date.items():
@@ -1773,6 +1844,23 @@ class Query(graphene.ObjectType):
         result.status = status
         return result
     
+    # 학습 리포트
+    def resolve_get_summary_report(self, info, student_id):
+        try:
+            return SummaryReportModel.objects.get(student__user__id=student_id)
+        except SummaryReportModel.DoesNotExist:
+            return None
+    
+    def resolve_get_month_reports(self, info, student_id):
+        # 현재 날짜에서 6개월 전의 날짜를 계산
+        six_months_ago = datetime.now() - timedelta(days=6*30)  # 한 달을 30일로 가정
+
+        # 쿼리를 실행하여 원하는 데이터를 가져옵니다.
+        return MonthReportModel.objects.filter(
+            student__user__id=student_id,
+            update_time__gte=six_months_ago.strftime('%Y-%m-%d %H:%M:%S')  # update_time 필드 형식에 맞게 문자열로 변환
+        ).order_by('-update_time')  # 최근 데이터부터 정렬
+
 class Mutation(graphene.ObjectType):
     login = Login.Field()
     createUser = CreateUser.Field()
@@ -1790,6 +1878,7 @@ class Mutation(graphene.ObjectType):
     create_lecture = CreateLecture.Field()
     update_lecture_info = UpdateLectureInfo.Field()
     update_lecture = UpdateLecture.Field()
+    update_lecture_students = UpdateLectureStudents.Field()
     delete_lecture = DeleteLecture.Field()
     delete_lecture_info = DeleteLectureInfo.Field()
 

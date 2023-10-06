@@ -116,3 +116,33 @@ class BookReservation(models.Model):
     lecture = models.ForeignKey(Lecture, on_delete=models.CASCADE, related_name='book_reservation_list')
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='book_reservations')
     books = models.ManyToManyField(BookInventory, related_name='reservations')
+
+class BookPkg(models.Model):
+    name = models.CharField(verbose_name="패키지 이름", max_length=255)
+    books = models.ManyToManyField(Book, verbose_name="도서들", related_name="packages")
+    fnf = models.IntegerField(null=True) # 0:F_NF 1:F 2:NF 
+    
+    ar_min = models.FloatField(verbose_name="최소 AR 점수") # library_book 테이블의 bl 평균값으로 비교 
+    ar_max = models.FloatField(verbose_name="최대 AR 점수")
+    
+    wc_min = models.IntegerField(verbose_name="최소 WC") # library_book 테이블의 wc_ar 평균값으로 비교
+    wc_max = models.IntegerField(verbose_name="최대 WC")
+    
+    correct_min = models.IntegerField(verbose_name="최소 정답률") # student_book_reacord 테이블의 ar_correct 평균값으로 비교
+    correct_max = models.IntegerField(verbose_name="최대 정답률")
+
+    il = models.CharField(
+        verbose_name="IL", 
+        max_length=10, 
+        null=True
+    ) #IL 값에 따라 추천 도서 수인 il_count가 다름 
+    # IL = (
+    #     ('1', 'IL_LG'),
+    #     ('2', 'IL_MG'),
+    #     ('3', 'IL_MG+'),
+    #     ('4', 'IL_UG'),
+    # )
+    il_count = models.IntegerField(null=True)
+
+    def __str__(self):
+        return self.name
