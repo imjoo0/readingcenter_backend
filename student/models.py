@@ -9,7 +9,7 @@ class Attendance(models.Model):
     lecture = models.ForeignKey(
         Lecture, 
         verbose_name="강의",
-        on_delete=models.CASCADE,
+        on_delete=models.DO_NOTHING,
         related_name='attendance'
     )
     student = models.ForeignKey(

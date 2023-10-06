@@ -229,9 +229,9 @@ LOGGING = {
 }
 
 # 스케줄러 돌리기 
-# Celery configurations
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+# Celery configurations -> redis를 docker에 설치 했기 떄문에 docker의 주소로 연결 
+CELERY_BROKER_URL = 'redis://172.17.0.1:6379/0'
+CELERY_RESULT_BACKEND = 'redis://172.17.0.1:6379/0'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
