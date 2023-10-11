@@ -1,4 +1,4 @@
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, Avg, OuterRef, Subquery
 from django.db import transaction
 from django.utils import timezone
 from datetime import datetime, timedelta
@@ -18,7 +18,7 @@ import copy
 import pandas as pd
 from collections import defaultdict
 from calendar import monthrange
-
+from random import choice, sample
 
 from user.models import (
     User as UserModel,
@@ -37,13 +37,16 @@ from library.models import(
     Book as BookModel,
     BookInventory as BookInventoryModel,
     BookRental as BookRentalModel,
-    BookReservation as BookReservationModel
+    BookReservation as BookReservationModel,
+    BookPkg as BookPkgModel
 )
 from student.models import(
     BookRecord as BookRecordModel,
     Attendance as AttendanceModel,
     SummaryReport as SummaryReportModel,
-    MonthReport as MonthReportModel
+    MonthReport as MonthReportModel,
+    RecommendFiction as RecommendFictionModel,
+    RecommendNonFiction as RecommendNonFictionModel
 ) 
 
 from graphene_django.views import GraphQLView
@@ -701,8 +704,8 @@ class DeleteStudentBookReservations(graphene.Mutation):
         return DeleteStudentBookReservations(deleted_book_ids=deleted_book_ids)
 
 def create_lectures_for_auto_add(academy, lecture_info, date, start_time, end_time, lecture_memo, teacher, repeat_days_dict, lecture_ids, new_students=None):
-    _, last_day_of_next_month = monthrange(date.year, (date.month % 12) + 1)
-    end_date = date.replace(month=(date.month % 12) + 1, day=last_day_of_next_month)
+    _, last_day_of_month = monthrange(date.year, date.month)
+    end_date = date.replace(day=last_day_of_month)
     current_date = date
     while current_date <= end_date:
         if current_date.weekday() in repeat_days_dict.get("repeat_days", []):
@@ -1045,7 +1048,7 @@ class UpdateLectureStudents(graphene.Mutation):
     class Arguments:
          # 필수 인자
         lecture_id = graphene.Int(required=True)
-        student_id = graphene.ID(required=True)
+        student_ids = graphene.List(graphene.Int, required=True)
         date = graphene.Date(required=True) 
 
         lecture_memo = graphene.String(required=False)
@@ -1058,7 +1061,7 @@ class UpdateLectureStudents(graphene.Mutation):
     message = graphene.String()
 
     @staticmethod
-    def mutate(root, info, lecture_id,student_id, date, **kwargs):
+    def mutate(root, info, lecture_id,student_ids, date, **kwargs):
         user = info.context.user
         if user.is_anonymous:
             raise Exception("Log in to update a lecture info.")
@@ -1068,9 +1071,6 @@ class UpdateLectureStudents(graphene.Mutation):
             original_lecture = LectureModel.objects.get(id=lecture_id)
         except LectureModel.DoesNotExist:
             raise Exception("Lecture not found.")
-
-        if not original_lecture.students.filter(user_id=student_id).exists():
-            raise Exception("Student is not enrolled in the lecture.")
         
         # 2. 그 인스턴스를 복사하여 새로운 Lecture 인스턴스를 생성합니다.
         new_lecture = copy.deepcopy(original_lecture)
@@ -1085,13 +1085,15 @@ class UpdateLectureStudents(graphene.Mutation):
         except (AcademyModel.DoesNotExist, TeacherProfileModel.DoesNotExist) as e:
             raise Exception(str(e))
 
+        students = StudentProfileModel.objects.filter(user_id__in=student_ids)
+
         new_lecture.date = date
         new_lecture.lecture_memo = kwargs.get('lecture_memo', original_lecture.lecture_memo) 
         new_lecture.start_time = kwargs.get('start_time', original_lecture.start_time) 
         new_lecture.end_time = kwargs.get('end_time', original_lecture.end_time) 
 
-        new_lecture.students.add(student_id)
-        original_lecture.students.remove(student_id)
+        new_lecture.students.add(*students)
+        original_lecture.students.remove(*students)
         new_lecture.save()
         return UpdateLecture(success=True, message="해당 강좌의 정보가 수정되었습니다.")
   
@@ -1534,6 +1536,170 @@ class Login(graphene.Mutation):
 
         return Login(accessToken=accessToken, refreshToken=refreshToken,user_info = user)
 
+class RecommendBookByRecord(graphene.Mutation):
+    class Arguments:
+        student_id = graphene.Int(required=True)
+        academy_id = graphene.Int(required=True)
+        book_record_ids = graphene.List(graphene.ID, required=True)
+        f_nf = graphene.String(required=True)
+
+    # 예약 가능한 추천 도서 목록을 반환:
+    selected_books_inventory = graphene.List(BookInventoryType)
+
+    @staticmethod
+    def mutate(root, info, student_id, academy_id, f_nf,book_record_ids):
+        records = BookRecordModel.objects.filter(id__in=book_record_ids)
+
+        aggregates = records.aggregate(
+            avg_ar_correct=Avg('ar_correct'),
+            avg_bl=Avg('book__bl'),
+            avg_wc_ar=Avg('book__wc_ar')
+        )
+
+        avg_ar_correct = aggregates['avg_ar_correct']
+        avg_bl = aggregates['avg_bl']
+        avg_wc_ar = aggregates['avg_wc_ar']
+
+        model_to_use = RecommendFictionModel if f_nf == '1' else RecommendNonFictionModel
+        already_recommended = model_to_use.objects.filter(student__user__id=student_id).values_list('pkg', flat=True)
+
+        recommended_pkgs = BookPkgModel.objects.filter(
+            fnf=f_nf,
+            ar_min__lte=avg_bl,
+            ar_max__gte=avg_bl,
+            wc_min__lte=avg_wc_ar,
+            wc_max__gte=avg_wc_ar,
+            correct_min__lte=avg_ar_correct,
+            correct_max__gte=avg_ar_correct
+        ).exclude(name__in=already_recommended)
+
+        if not recommended_pkgs.exists():
+            try:
+                latest_recommended = model_to_use.objects.filter(student__user__id=student_id).latest('created_at')
+                recommended_pkgs = BookPkgModel.objects.filter(
+                    fnf=f_nf,
+                    ar_min__lte=avg_bl,
+                    ar_max__gte=avg_bl,
+                    wc_min__lte=avg_wc_ar,
+                    wc_max__gte=avg_wc_ar,
+                    correct_min__lte=avg_ar_correct,
+                    correct_max__gte=avg_ar_correct
+                ).exclude(name=latest_recommended.pkg)
+            except model_to_use.DoesNotExist:
+                pass
+
+        while recommended_pkgs:
+            selected_pkg = choice(recommended_pkgs)
+            matching_books = selected_pkg.books.all() if selected_pkg.il == '0' else selected_pkg.books.filter(il=selected_pkg.il)
+            available_books_in_inventory = BookInventoryModel.objects.filter(book__in=matching_books, academy_id=academy_id)
+            
+            unavailable_inventory_items = set(BookReservationModel.objects.filter(books__in=available_books_in_inventory).values_list('books', flat=True))
+            unavailable_inventory_items.update(BookRentalModel.objects.filter(book_inventory__in=available_books_in_inventory, returned_at__isnull=True).values_list('book_inventory', flat=True))
+            # 예약되거나 렌탈된 도서의 인벤토리 항목을 제외
+            available_inventory_items = [inventory_item for inventory_item in available_books_in_inventory if inventory_item.id not in unavailable_inventory_items]
+
+            if available_inventory_items:
+                count_to_sample = min(selected_pkg.il_count, len(available_inventory_items))
+                selected_books_inventory = sample(list(available_inventory_items), count_to_sample)
+                model_to_use.objects.create(
+                    student=StudentProfileModel.objects.get(user_id=student_id),
+                    pkg=selected_pkg.name
+                )
+                return RecommendBookByRecord(selected_books_inventory=selected_books_inventory)
+
+            recommended_pkgs.remove(selected_pkg)
+
+        raise Exception('변경할 도서패키지가 존재하지 않습니다')
+
+class RecommendBookByPeriod(graphene.Mutation):
+    class Arguments:
+        student_id = graphene.Int(required=True)
+        academy_id = graphene.Int(required=True)
+        f_nf = graphene.String(required=True)
+
+    # 예약 가능한 추천 도서 목록을 반환:
+    selected_books_inventory = graphene.List(BookInventoryType)
+
+    @staticmethod
+    def mutate(root, info, student_id, academy_id, f_nf):
+        model_to_use = RecommendFictionModel if f_nf == '1' else RecommendNonFictionModel
+
+        # 최신 변경일 가져오기
+        try:
+            latest_change = model_to_use.objects.filter(student__user__id=student_id).latest('created_at').created_at
+        except model_to_use.DoesNotExist:
+            raise Exception('이전 패키지 변경일을 찾을 수 없습니다.')
+        
+        # 이전 패키지 변경일부터 현재까지의 리딩 기록 필터링
+        records = BookRecordModel.objects.filter(student__user__id=student_id, ar_date__isnull=False, ar_date__range=(latest_change, timezone.now()+timedelta(hours=9)))
+
+        # 만약 records가 빈 QuerySet이면 최근 6개월로 계산
+        if not records:
+            six_months_ago = timezone.now() - timedelta(days=180)
+            records = BookRecordModel.objects.filter(student__user__id=student_id, ar_date__isnull=False, ar_date__range=(six_months_ago, timezone.now()+timedelta(hours=9)))
+        
+        print(records)
+
+        aggregates = records.aggregate(
+            avg_ar_correct=Avg('ar_correct'),
+            avg_bl=Avg('book__bl'),
+            avg_wc_ar=Avg('book__wc_ar')
+        )
+
+        avg_ar_correct = aggregates['avg_ar_correct']
+        avg_bl = aggregates['avg_bl']
+        avg_wc_ar = aggregates['avg_wc_ar']
+
+        already_recommended = model_to_use.objects.filter(student__user__id=student_id).values_list('pkg', flat=True)
+
+        recommended_pkgs = BookPkgModel.objects.filter(
+            fnf=f_nf,
+            ar_min__lte=avg_bl,
+            ar_max__gte=avg_bl,
+            wc_min__lte=avg_wc_ar,
+            wc_max__gte=avg_wc_ar,
+            correct_min__lte=avg_ar_correct,
+            correct_max__gte=avg_ar_correct
+        ).exclude(name__in=already_recommended)
+
+        if not recommended_pkgs.exists():
+            try:
+                latest_recommended = model_to_use.objects.filter(student__user__id=student_id).latest('created_at')
+                recommended_pkgs = BookPkgModel.objects.filter(
+                    fnf=f_nf,
+                    ar_min__lte=avg_bl,
+                    ar_max__gte=avg_bl,
+                    wc_min__lte=avg_wc_ar,
+                    wc_max__gte=avg_wc_ar,
+                    correct_min__lte=avg_ar_correct,
+                    correct_max__gte=avg_ar_correct
+                ).exclude(name=latest_recommended.pkg)
+            except model_to_use.DoesNotExist:
+                pass
+
+        while recommended_pkgs:
+            selected_pkg = choice(recommended_pkgs)
+            matching_books = selected_pkg.books.all() if selected_pkg.il == '0' else selected_pkg.books.filter(il=selected_pkg.il)
+            available_books_in_inventory = BookInventoryModel.objects.filter(book__in=matching_books, academy_id=academy_id)
+            
+            unavailable_inventory_items = set(BookReservationModel.objects.filter(books__in=available_books_in_inventory).values_list('books', flat=True))
+            unavailable_inventory_items.update(BookRentalModel.objects.filter(book_inventory__in=available_books_in_inventory, returned_at__isnull=True).values_list('book_inventory', flat=True))
+            # 예약되거나 렌탈된 도서의 인벤토리 항목을 제외
+            available_inventory_items = [inventory_item for inventory_item in available_books_in_inventory if inventory_item.id not in unavailable_inventory_items]
+
+            if available_inventory_items:
+                count_to_sample = min(selected_pkg.il_count, len(available_inventory_items))
+                selected_books_inventory = sample(list(available_inventory_items), count_to_sample)
+                model_to_use.objects.create(
+                    student=StudentProfileModel.objects.get(user_id=student_id),
+                    pkg=selected_pkg.name
+                )
+                return RecommendBookByRecord(selected_books_inventory=selected_books_inventory)
+
+            recommended_pkgs.remove(selected_pkg)
+
+        raise Exception('변경할 도서패키지가 존재하지 않습니다')
+
 # 처리
 class Query(graphene.ObjectType):
     me = graphene.Field(UserType)
@@ -1581,6 +1747,9 @@ class Query(graphene.ObjectType):
     get_summary_report = graphene.Field(SummaryReportType, student_id=graphene.Int(required=True))
     get_month_reports = graphene.List(MonthReportType, student_id=graphene.Int(required=True))
     
+    # 추천도서
+    get_recommend_books = graphene.List(BookInventoryType, student_id=graphene.ID(required=True), academy_id=graphene.ID(required=True), f_nf=graphene.String(required=True))
+
     def resolve_me(self, info):
         user = info.context.user
         if user.is_authenticated:
@@ -1834,6 +2003,71 @@ class Query(graphene.ObjectType):
             student__user__id=student_id,
             update_time__gte=six_months_ago.strftime('%Y-%m-%d %H:%M:%S')  # update_time 필드 형식에 맞게 문자열로 변환
         ).order_by('-update_time')  # 최근 데이터부터 정렬
+    
+    def resolve_get_recommend_books(self, info, student_id, academy_id, f_nf):
+        # f_nf 값에 따라 사용할 모델을 결정
+        model_to_use = RecommendFictionModel if f_nf == '1' else RecommendNonFictionModel
+
+        try:
+            latest_f = model_to_use.objects.filter(student__user__id=student_id).latest('created_at')
+            latest_f_recommended = latest_f.pkg
+        except model_to_use.DoesNotExist:
+            raise Exception('기존에 선정된 추천 도서 패키지가 없습니다.')
+        
+        recommended_pkgs = BookPkgModel.objects.filter(name=latest_f_recommended, fnf='1')
+        all_selected_books_inventory = []
+
+        for recommended_pkg in recommended_pkgs:
+            recommended_books = recommended_pkg.books.all() if recommended_pkg.il == '0' else recommended_pkg.books.filter(il=recommended_pkg.il)
+            # BookInventory에서 선택된 도서들이 존재하는지 확인
+            available_books_in_inventory = BookInventoryModel.objects.filter(book__in=recommended_books, academy_id=academy_id)
+            # 예약되거나 렌탈된 도서의 인벤토리 항목을 제외
+            unavailable_inventory_items = set(BookReservationModel.objects.filter(books__in=available_books_in_inventory).values_list('books', flat=True))
+            unavailable_inventory_items.update(BookRentalModel.objects.filter(book_inventory__in=available_books_in_inventory, returned_at__isnull=True).values_list('book_inventory', flat=True))
+            # 예약되거나 렌탈된 도서의 인벤토리 항목을 제외
+            available_inventory_items = [inventory_item for inventory_item in available_books_in_inventory if inventory_item.id not in unavailable_inventory_items]
+
+            # 예약 가능한 추천 도서가 있을 경우 최대 il_count 만큼 도서를 뽑아서 반환
+            if available_inventory_items:
+                count_to_sample = min(recommended_pkg.il_count, len(available_inventory_items))
+                selected_books_inventory = sample(list(available_inventory_items), count_to_sample)
+                all_selected_books_inventory.extend(selected_books_inventory)
+
+        if all_selected_books_inventory:
+            return all_selected_books_inventory
+        else:
+            raise Exception('예약가능한 추천 도서 목록이 없습니다.')        
+        
+    def resolve_get_recommend_nf_books(self, info, student_id, academy_id):
+        try:
+            latest_f = RecommendNonFictionModel.objects.filter(student__user__id=student_id).latest('created_at')
+            latest_f_recommended = latest_f.pkg
+        except RecommendNonFictionModel.DoesNotExist:
+            raise Exception('기존에 선정된 추천 도서 패키지가 없습니다.')
+        
+        recommended_pkgs = BookPkgModel.objects.filter(name=latest_f_recommended, fnf='2')
+        all_selected_books_inventory = []
+
+        for recommended_pkg in recommended_pkgs:
+            recommended_books = recommended_pkg.books.all() if recommended_pkg.il == '0' else recommended_pkg.books.filter(il=recommended_pkg.il)
+            # BookInventory에서 선택된 도서들이 존재하는지 확인
+            available_books_in_inventory = BookInventoryModel.objects.filter(book__in=recommended_books, academy_id=academy_id)
+            # 예약되거나 렌탈된 도서의 인벤토리 항목을 제외
+            unavailable_inventory_items = set(BookReservationModel.objects.filter(books__in=available_books_in_inventory).values_list('books', flat=True))
+            unavailable_inventory_items.update(BookRentalModel.objects.filter(book_inventory__in=available_books_in_inventory, returned_at__isnull=True).values_list('book_inventory', flat=True))
+            # 예약되거나 렌탈된 도서의 인벤토리 항목을 제외
+            available_inventory_items = [inventory_item for inventory_item in available_books_in_inventory if inventory_item.id not in unavailable_inventory_items]
+
+            # 예약 가능한 추천 도서가 있을 경우 최대 il_count 만큼 도서를 뽑아서 반환
+            if available_inventory_items:
+                count_to_sample = min(recommended_pkg.il_count, len(available_inventory_items))
+                selected_books_inventory = sample(list(available_inventory_items), count_to_sample)
+                all_selected_books_inventory.extend(selected_books_inventory)
+                
+        if all_selected_books_inventory:
+            return all_selected_books_inventory
+        else:
+            raise Exception('예약가능한 추천 도서 목록이 없습니다.')            
 
 class Mutation(graphene.ObjectType):
     login = Login.Field()
@@ -1871,5 +2105,8 @@ class Mutation(graphene.ObjectType):
     delete_student_book_reservations = DeleteStudentBookReservations.Field()
     create_remark = CreateRemark.Field()
     create_makeup = CreateMakeup.Field()
+
+    recommend_book_by_record = RecommendBookByRecord.Field()
+    recommend_book_by_period = RecommendBookByPeriod.Field()
 
 schema = graphene.Schema(query=Query, mutation=Mutation)

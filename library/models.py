@@ -142,7 +142,7 @@ class BookPkg(models.Model):
     #     ('3', 'IL_MG+'),
     #     ('4', 'IL_UG'),
     # )
-    il_count = models.IntegerField(null=True)
+    il_count = models.IntegerField(null=False)
 
     def __str__(self):
         return self.name

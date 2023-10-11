@@ -6,10 +6,10 @@ cursor = connection.cursor()
 
 try:
     # 외래 키 제약 해제
-    cursor.execute("SET FOREIGN_KEY_CHECKS=1;")
+    cursor.execute("SET FOREIGN_KEY_CHECKS=0;")
     
     # 데이터 삭제
-    # cursor.execute("DELETE FROM table_name;")
+    cursor.execute("DELETE FROM library_bookpkg;")
     
     # 데이터 다시 삽입
     # ... (데이터 다시 삽입 작업)

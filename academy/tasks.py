@@ -1,4 +1,4 @@
-from celery import shared_task
+from backend.celery import shared_task
 
 @shared_task
 def create_monthly_lectures():
