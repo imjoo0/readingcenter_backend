@@ -73,8 +73,8 @@ class LectureInfo(models.Model):
     created_date = models.DateField(default=date.today, verbose_name="생성된 날짜")
 
     def __str__(self):
-        return self.lecture_info
-
+        return self.about
+    
 class Lecture(models.Model):
     lecture_info = models.ForeignKey(
         LectureInfo,

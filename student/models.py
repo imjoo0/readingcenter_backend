@@ -128,3 +128,30 @@ class RecommendNonFiction(models.Model):
 
     def __str__(self):
         return f"Recommended non-fiction for {self.student.kor_name}"
+
+# 추천도서로 뽑은 도서 저장 
+# class SelectFiction(models.Model):
+#     student = models.ForeignKey(
+#         Student,
+#         verbose_name="학생",
+#         on_delete=models.CASCADE,
+#         related_name='selected_fictions'
+#     )
+#     pkg = models.CharField(verbose_name="추천픽션 패키지", max_length=255)
+#     created_at = models.DateField(verbose_name="패키지 선정 날짜", default=date.today, null=True, blank=True)
+
+#     def __str__(self):
+#         return f"Selected fiction for {self.student.kor_name}"
+
+# class SelectNonFiction(models.Model):
+#     student = models.ForeignKey(
+#         Student,
+#         verbose_name="학생",
+#         on_delete=models.CASCADE,
+#         related_name='selected_nonfictions'
+#     )
+#     pkg = models.CharField(verbose_name="추천논픽션 패키지", max_length=255)
+#     created_at = models.DateField(verbose_name="패키지 선정 날짜", default=date.today, null=True, blank=True)
+
+#     def __str__(self):
+#         return f"Selected non-fiction for {self.student.kor_name}"

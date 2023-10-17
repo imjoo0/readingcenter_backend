@@ -14,6 +14,7 @@ from pathlib import Path
 from datetime import timedelta
 import json
 from django.core.exceptions import ImproperlyConfigured
+from celery.schedules import crontab
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -241,7 +242,7 @@ CELERY_TIMEZONE = 'Asia/Seoul'
 CELERY_BEAT_SCHEDULE = {
     'create_monthly_lectures': {
         'task': 'academy.tasks.create_monthly_lectures',
-        'schedule': timedelta(days=30),
+        'schedule': crontab(day_of_month='27'), #매월 27일에 작업 실행
         'args': ()
     },
 }
