@@ -222,10 +222,15 @@ LOGGING = {
         'console': {
             'class': 'logging.StreamHandler',
         },
+        'file': {
+            'level': 'DEBUG',
+            'class': 'logging.FileHandler',
+            'filename': 'debug.log',
+        },
     },
     'root': {
-        'handlers': ['console'],
-        'level': 'DEBUG',  # 필요한 로그 레벨로 변경 가능 (DEBUG, INFO, WARNING, ERROR 등)
+        'handlers': ['console', 'file'],
+        'level': 'DEBUG',
     },
 }
 

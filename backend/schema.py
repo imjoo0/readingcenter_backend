@@ -168,6 +168,7 @@ class BookInventoryType(DjangoObjectType):
     book_status = graphene.String()
     is_available = graphene.Boolean() 
     inventory_num = graphene.Int()  
+    reservations = graphene.List(lambda: BookReservationType)
 
     def resolve_book_status(self, info):
         return self.get_status_display()
@@ -176,7 +177,7 @@ class BookInventoryType(DjangoObjectType):
         return self.book.title_ar
     
     def resolve_reservations(self,info):
-        return self.reservations.id
+        return self.reservations.all()
     
     # is_available 필드에 대한 resolver를 추가합니다.
     def resolve_is_available(self, info):
@@ -675,7 +676,7 @@ class PlbnReservation(graphene.Mutation):
         else:
             raise Exception("이미 예약되어있는 도서입니다")
 
-        return BookReservation(book_reservation=book_reservation)
+        return PlbnReservation(book_reservation=book_reservation)
    
 class DeleteBookReservations(graphene.Mutation):
     class Arguments:
@@ -964,7 +965,6 @@ class UpdateLectureInfo(graphene.Mutation):
     message = graphene.String()
 
     @staticmethod
-    @transaction.atomic  # 트랜잭션 적용
     def mutate(root, info, lecture_info_id, date, **kwargs):
         user = info.context.user
         if user.is_anonymous:
@@ -1863,8 +1863,11 @@ class Query(graphene.ObjectType):
     get_books = graphene.List(BookType,academyId=graphene.Int())
     student_reserved_books = graphene.List(BookInventoryType, student_id=graphene.Int(required=True))
     all_book_record = graphene.List(BookRecordType)
+    
     student_book_record_with_pkg = graphene.Field(StudentBookRecordType, student_id=graphene.Int(required=True), f_nf=graphene.String(required=True))
     student_book_record = graphene.List(BookRecordType, student_id=graphene.Int(required=True))
+    student_plbn_record = graphene.Field(graphene.Boolean, student_id=graphene.Int(required=True), plbn=graphene.String(required=True))
+
     get_attendance = graphene.List(StudentType, academyId=graphene.Int(required=True), date=graphene.Date(required=True), startTime=graphene.String(), endtime=graphene.String())
     get_student_lecture_history = graphene.List(AttendanceType, academyId=graphene.Int(required=True), studentId=graphene.Int(required=True))
     get_lecture_memo = graphene.List(AttendanceType,lectureId = graphene.ID(required=True))
@@ -2047,7 +2050,16 @@ class Query(graphene.ObjectType):
     def resolve_student_book_record(self, info, student_id):
         book_records = BookRecordModel.objects.filter(student_id=student_id)
         return book_records
-    
+
+    def resolve_student_plbn_record(self, info, student_id, plbn):
+        try:
+            target_book = BookInventoryModel.objects.get(plbn=plbn)
+        except BookInventoryModel.DoesNotExist:
+            raise Exception("해당 plbn을 가진 도서가 없습니다.")
+
+        book_records = BookRecordModel.objects.filter(student_id=student_id, book=target_book.book)
+        return book_records.exists()  # True 또는 False 반환
+
     def resolve_student_book_record_with_pkg(self, info, student_id, f_nf):
         book_records = BookRecordModel.objects.filter(student_id=student_id)
         # fnf 값을 기반으로 모델 선택
