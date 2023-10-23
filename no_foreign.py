@@ -9,7 +9,9 @@ try:
     cursor.execute("SET FOREIGN_KEY_CHECKS=0;")
     
     # 데이터 삭제
-    cursor.execute("DELETE FROM library_bookpkg;")
+    cursor.execute('''UPDATE academy_lecture
+                    SET teacher_id = 280
+                    WHERE teacher_id = 51;''')
     
     # 데이터 다시 삽입
     # ... (데이터 다시 삽입 작업)

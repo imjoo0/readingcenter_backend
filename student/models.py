@@ -1,6 +1,6 @@
 from django.db import models
 from academy.models import Lecture
-from user.models import Student
+from user.models import User,Student
 from library.models import Book
 from django.utils import timezone
 from datetime import date 
@@ -9,8 +9,9 @@ class Attendance(models.Model):
     lecture = models.ForeignKey(
         Lecture, 
         verbose_name="강의",
-        on_delete=models.DO_NOTHING,
-        related_name='attendance'
+        on_delete=models.SET_NULL,
+        related_name='attendance',
+        null=True
     )
     student = models.ForeignKey(
         Student,
@@ -86,15 +87,22 @@ class SummaryReport(models.Model):
     )
     origin = models.CharField(verbose_name="원번", max_length=20,null=False)
     recent_study_date = models.DateField(verbose_name="최근 학습 일", null=True, blank=True)
+    base_date = models.DateField(verbose_name="기준 학습 일", null=True, blank=True, default=None)
     this_month_ar = models.FloatField(null=True, blank=True)
     last_month_ar = models.FloatField(null=True, blank=True)
     ar_diff = models.FloatField(null=True, blank=True)
+    this_month_sr = models.FloatField(null=True, blank=True, default=None)
+    last_month_sr = models.FloatField(null=True, blank=True, default=None)
+    sr_diff = models.FloatField(null=True, blank=True, default=None)
     this_month_wc = models.IntegerField(null=True, blank=True)
     last_month_wc = models.IntegerField(null=True, blank=True)
     total_wc = models.IntegerField(null=True, blank=True)
+    this_per_wc  = models.IntegerField(null=True, blank=True, default=None)
+    last_per_wc  = models.IntegerField(null=True, blank=True, default=None)
+    wc_diff = models.IntegerField(null=True, blank=True, default=None)
     this_month_correct = models.IntegerField(null=True, blank=True)
     last_month_correct = models.IntegerField(null=True, blank=True)
-    total_correct = models.IntegerField(null=True, blank=True)
+    total_correct = models.IntegerField(null=True, blank=True) # 이번달 저번달 정답률 차이
     this_month_bc = models.IntegerField(null=True, blank=True)
     last_month_bc = models.IntegerField(null=True, blank=True)
     total_bc = models.IntegerField(null=True, blank=True)
@@ -112,6 +120,12 @@ class RecommendFiction(models.Model):
     )
     pkg = models.CharField(verbose_name="추천픽션 패키지", max_length=255)
     created_at = models.DateField(verbose_name="패키지 선정 날짜", default=date.today, null=True, blank=True)
+    selected_books = models.ManyToManyField(
+        'library.Book', 
+        verbose_name="선택된 도서들",
+        related_name='recommend_fictions',
+        blank=True
+    )
 
     def __str__(self):
         return f"Recommended fiction for {self.student.kor_name}"
@@ -125,33 +139,47 @@ class RecommendNonFiction(models.Model):
     )
     pkg = models.CharField(verbose_name="추천논픽션 패키지", max_length=255)
     created_at = models.DateField(verbose_name="패키지 선정 날짜", default=date.today, null=True, blank=True)
+    selected_books = models.ManyToManyField(
+        'library.Book',
+        verbose_name="선택된 도서들",
+        related_name='recommend_nonfictions',
+        blank=True
+    )
 
     def __str__(self):
         return f"Recommended non-fiction for {self.student.kor_name}"
 
-# 추천도서로 뽑은 도서 저장 
-# class SelectFiction(models.Model):
-#     student = models.ForeignKey(
-#         Student,
-#         verbose_name="학생",
-#         on_delete=models.CASCADE,
-#         related_name='selected_fictions'
-#     )
-#     pkg = models.CharField(verbose_name="추천픽션 패키지", max_length=255)
-#     created_at = models.DateField(verbose_name="패키지 선정 날짜", default=date.today, null=True, blank=True)
+class Opinion(models.Model):
+    student = models.ForeignKey(
+        Student,
+        verbose_name="학생", 
+        on_delete=models.CASCADE,
+        related_name='opinion_student'
+    )
+    writer = models.ForeignKey(
+        User,
+        verbose_name="작성자", 
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name='opinion_writer'
+    )
+    contents = models.TextField(verbose_name="종합의견")
+    created_at = models.DateField(verbose_name="종합의견 생성 날짜", default=date.today, null=True, blank=True)
 
-#     def __str__(self):
-#         return f"Selected fiction for {self.student.kor_name}"
-
-# class SelectNonFiction(models.Model):
-#     student = models.ForeignKey(
-#         Student,
-#         verbose_name="학생",
-#         on_delete=models.CASCADE,
-#         related_name='selected_nonfictions'
-#     )
-#     pkg = models.CharField(verbose_name="추천논픽션 패키지", max_length=255)
-#     created_at = models.DateField(verbose_name="패키지 선정 날짜", default=date.today, null=True, blank=True)
-
-#     def __str__(self):
-#         return f"Selected non-fiction for {self.student.kor_name}"
+class Consulting(models.Model):
+    student = models.ForeignKey(
+        Student,
+        verbose_name="학생", 
+        on_delete=models.CASCADE,
+        related_name='consulting_student'
+    )
+    writer = models.ForeignKey(
+        User,
+        verbose_name="작성자", 
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name='consulting_writer'
+    )
+    title = models.TextField(verbose_name="상담 제목")
+    contents = models.TextField(verbose_name="상담 내용")
+    created_at = models.DateField(verbose_name="상담 생성 날짜", default=date.today, null=True, blank=True)

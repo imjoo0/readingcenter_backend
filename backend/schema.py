@@ -1,5 +1,4 @@
 from django.db.models import Sum, Q, Avg, OuterRef, Subquery
-from django.db import transaction
 from django.utils import timezone
 from datetime import datetime, timedelta
 from django.conf import settings
@@ -19,6 +18,7 @@ import pandas as pd
 from collections import defaultdict
 from calendar import monthrange
 from random import choice, sample
+from dateutil.relativedelta import relativedelta
 
 from user.models import (
     User as UserModel,
@@ -46,7 +46,8 @@ from student.models import(
     SummaryReport as SummaryReportModel,
     MonthReport as MonthReportModel,
     RecommendFiction as RecommendFictionModel,
-    RecommendNonFiction as RecommendNonFictionModel
+    RecommendNonFiction as RecommendNonFictionModel,
+    Opinion as OpinionModel
 ) 
 
 from graphene_django.views import GraphQLView
@@ -290,6 +291,10 @@ class RemarkType(DjangoObjectType):
     class Meta:
         model = RemarkModel
         fields = ("id","memo", "user", "academy")
+
+class OpinionType(DjangoObjectType):
+    class Meta:
+        model = OpinionModel
 
 class BookRecordType(DjangoObjectType):
     class Meta:
@@ -767,15 +772,31 @@ class DeleteStudentBookReservations(graphene.Mutation):
 
         # 삭제된 도서 ID 리스트를 반환
         return DeleteStudentBookReservations(deleted_book_ids=deleted_book_ids)
-
+    
+# 두달치로 생성
 def create_lectures_for_auto_add(academy, lecture_info, date, start_time, end_time, lecture_memo, teacher, repeat_days_dict, lecture_ids, new_students=None):
-    _, last_day_of_month = monthrange(date.year, date.month)
-    end_date = date.replace(day=last_day_of_month)
+    # date 월의 마지막 날을 계산
+    _, last_day_of_current_month = monthrange(date.year, date.month)
+    end_date_of_current_month = date.replace(day=last_day_of_current_month)
+
+    # date월 + 1월의 마지막 날을 계산
+    _, last_day_of_next_month = monthrange(date.year, date.month + 1)
+    end_date_of_next_month = (date + relativedelta(months=+1)).replace(day=last_day_of_next_month)
+
+    # date부터 date월의 마지막 날까지 강의 생성
     current_date = date
-    while current_date <= end_date:
+    while current_date <= end_date_of_current_month:
         if current_date.weekday() in repeat_days_dict.get("repeat_days", []):
-            create_and_save_lecture(academy, lecture_info, current_date, start_time, end_time, lecture_memo, teacher, lecture_ids,new_students)
+            create_and_save_lecture(academy, lecture_info, current_date, start_time, end_time, lecture_memo, teacher, lecture_ids, new_students)
         current_date += timedelta(days=1)
+
+    # date월 + 1월의 첫 날부터 date월 + 1월의 마지막 날까지 강의 생성
+    current_date = (date + relativedelta(months=+1)).replace(day=1)
+    while current_date <= end_date_of_next_month:
+        if current_date.weekday() in repeat_days_dict.get("repeat_days", []):
+            create_and_save_lecture(academy, lecture_info, current_date, start_time, end_time, lecture_memo, teacher, lecture_ids, new_students)
+        current_date += timedelta(days=1)
+
 
 def create_and_save_lecture(academy, lecture_info, date, start_time, end_time, lecture_memo, teacher, lecture_ids, new_students=None):
     lecture = LectureModel(
@@ -807,11 +828,12 @@ class CreateLecture(graphene.Mutation):
         end_time = graphene.Time(required=True)
         lecture_memo = graphene.String(required=False)
         teacher_id = graphene.Int(required=True)
+        student_ids = graphene.List(graphene.Int,required=True)
 
     lecture_ids = graphene.List(graphene.Int)
 
     @staticmethod
-    def mutate(root, info, academy_id, date, start_time, end_time, about, teacher_id, repeat_days,repeat_weeks,auto_add, lecture_memo):
+    def mutate(root, info, academy_id, date, start_time, end_time, about, teacher_id, repeat_days,repeat_weeks,auto_add, lecture_memo, student_ids):
         user = info.context.user
         if user.is_anonymous:
             raise Exception("Log in to add a lecture.")
@@ -838,11 +860,12 @@ class CreateLecture(graphene.Mutation):
         )
 
         lecture_info.save()
+        new_students = StudentProfileModel.objects.filter(user_id__in=student_ids)
         if auto_add:
-            create_lectures_for_auto_add(academy, lecture_info, date, start_time, end_time, lecture_memo, teacher, repeat_days_dict, lecture_ids)
+            create_lectures_for_auto_add(academy, lecture_info, date, start_time, end_time, lecture_memo, teacher, repeat_days_dict, lecture_ids, new_students)
         else:
             if -1 in repeat_days_dict.get("repeat_days", []):
-                create_and_save_lecture(academy, lecture_info, date, start_time, end_time, lecture_memo, teacher, lecture_ids)
+                create_and_save_lecture(academy, lecture_info, date, start_time, end_time, lecture_memo, teacher, lecture_ids, new_students)
             else:
                 # repeat_days에 있는 각 요일에 대해 수업 생성
                 # 주의 해야 할 사항 : date 요일이 repeat_day와 동일한 경우 -> 주 단위가 한 주 빠르게 생성되게 된다. 
@@ -853,7 +876,7 @@ class CreateLecture(graphene.Mutation):
                         days_difference = (repeat_day - date.weekday() + 7) % 7
                         # 수업 날짜 설정
                         lecture_date = date + timedelta(days=days_difference) + timedelta(weeks=week)
-                        create_and_save_lecture(academy, lecture_info, lecture_date, start_time, end_time, lecture_memo, teacher, lecture_ids)
+                        create_and_save_lecture(academy, lecture_info, lecture_date, start_time, end_time, lecture_memo, teacher, lecture_ids, new_students)
 
         return CreateLecture(lecture_ids=lecture_ids)
 
@@ -971,7 +994,7 @@ class UpdateLectureInfo(graphene.Mutation):
             raise Exception("Log in to update a lecture info.")
 
         try:
-            lecture_info =LectureInfoModel.objects.select_for_update().get(id=lecture_info_id)
+            lecture_info =LectureInfoModel.objects.get(id=lecture_info_id)
         except LectureInfoModel.DoesNotExist:
             raise Exception("해당 강좌 정보가 존재하지 않습니다.")
 
@@ -1008,54 +1031,25 @@ class UpdateLectureInfo(graphene.Mutation):
 
         
         # 기존의 repeat_days를 변경하려는 경우
-        if set(new_repeat_days) != set(old_repeat_days):
-            lecture_info.repeat_day = repeat_days_dict
-            # 기존에 만들었던 미래의 수업은 전부 삭제 
-            LectureModel.objects.filter(lecture_info=lecture_info, date__gte=date).delete()
-            # 반복 수업을 단일 수업으로 변경 
-            if -1 in new_repeat_days:
-                create_and_save_lecture(new_academy, lecture_info, date, start_time, end_time, lecture_memo, new_teacher, repeat_days_dict, [], new_students)
-            # 반복 수업 날짜 변경  
-            else:
-                lecture_info.repeat_weeks = kwargs.get('repeat_weeks', lecture_info.repeat_weeks) # 새로 입력 받은 값 혹은 기존 repeat_weeks로 진행 
-                # auto_add True 이면 created_date와 repeat_weeks를 4로 변경 , auto_add값도 true 로 변경 
-                if lecture_info.auto_add:
-                    create_lectures_for_auto_add(new_academy, lecture_info, date, start_time, end_time, lecture_memo, new_teacher, repeat_days_dict, [], new_students)
-                else:
-                    for week in range(lecture_info.repeat_weeks):
-                        for repeat_day in new_repeat_days:
-                            # 시작 날짜부터 해당 요일까지의 차이 계산
-                            # 수업 날짜 설정
-                            next_date = date + timedelta(days=(int(repeat_day) - date.weekday() + 7) % 7) + timedelta(weeks=week)
-                            create_and_save_lecture(new_academy, lecture_info, next_date, start_time, end_time, lecture_memo, new_teacher, repeat_days_dict, [], new_students)
-
-                    
-        # 기존의 repeat_days를 변경하지 않고 반복 주기만 변경하는 경우
+        lecture_info.repeat_day = repeat_days_dict
+        # 기존에 만들었던 미래의 수업은 전부 삭제 
+        LectureModel.objects.filter(lecture_info=lecture_info, date__gte=date).delete()
+        # 반복 수업을 단일 수업으로 변경 
+        if -1 in new_repeat_days:
+            create_and_save_lecture(new_academy, lecture_info, date, start_time, end_time, lecture_memo, new_teacher, [], new_students)
+        # 반복 수업 날짜 변경  
         else:
-            # 단일 수업 변경 
-            if -1 in new_repeat_days:
-                lecture_info.repeat_weeks = 1
-                lecture_info.auto_add = False
-                old_lecture.date = date
-                old_lecture.start_time = start_time
-                old_lecture.end_time = end_time
-                old_lecture.academy = new_academy
-                old_lecture.teacher = new_teacher
-                old_lecture.lecture_memo = lecture_memo
-                old_lecture.save()
-                old_lecture.students.set(new_students)
+            lecture_info.repeat_weeks = kwargs.get('repeat_weeks', lecture_info.repeat_weeks) # 새로 입력 받은 값 혹은 기존 repeat_weeks로 진행 
+            # auto_add True 이면 이달 말까지 생성
+            if lecture_info.auto_add:
+                create_lectures_for_auto_add(new_academy, lecture_info, date, start_time, end_time, lecture_memo, new_teacher, repeat_days_dict, [], new_students)
             else:
-                if lecture_info.auto_add:
-                    create_lectures_for_auto_add(new_academy, lecture_info, date, start_time, end_time, lecture_memo, new_teacher, repeat_days_dict, [], new_students)
-                else:
-                    lecture_info.repeat_weeks = kwargs.get('repeat_weeks', lecture_info.repeat_weeks) # 새로 입력 받은 값 혹은 기존 repeat_weeks로 진행 
-                    if kwargs['repeat_weeks'] < lecture_info.repeat_weeks:
-                        LectureModel.objects.filter(lecture_info=lecture_info, date__gte=date + timedelta(weeks=kwargs['repeat_weeks'])).delete()
-                    elif kwargs['repeat_weeks'] > lecture_info.repeat_weeks:
-                        for week in range(lecture_info.repeat_weeks, kwargs['repeat_weeks']):
-                            next_date = old_lecture.date + timedelta(weeks=week)
-                            create_and_save_lecture(new_academy, lecture_info, next_date, start_time, end_time, lecture_memo, new_teacher, repeat_days_dict, [], new_students)
-
+                for week in range(lecture_info.repeat_weeks):
+                    for repeat_day in new_repeat_days:
+                        # 시작 날짜부터 해당 요일까지의 차이 계산
+                        # 수업 날짜 설정
+                        next_date = date + timedelta(days=(int(repeat_day) - date.weekday() + 7) % 7) + timedelta(weeks=week)
+                        create_and_save_lecture(new_academy, lecture_info, next_date, start_time, end_time, lecture_memo, new_teacher, [], new_students)                 
         lecture_info.save()
         return UpdateLectureInfo(success=True, message="해당 강좌의 정보가 전부 수정되었습니다.")
     
@@ -1075,14 +1069,13 @@ class UpdateLecture(graphene.Mutation):
     message = graphene.String()
 
     @staticmethod
-    @transaction.atomic  # 트랜잭션 적용
     def mutate(root, info, lecture_id, date, **kwargs):
         user = info.context.user
         if user.is_anonymous:
             raise Exception("Log in to update a lecture info.")
 
         try:
-            lecture =LectureModel.objects.select_for_update().get(id=lecture_id)
+            lecture =LectureModel.objects.get(id=lecture_id)
         except LectureModel.DoesNotExist:
             raise Exception("기존 강좌 정보가 존재하지 않습니다.")
         
@@ -1164,7 +1157,7 @@ class UpdateLectureStudents(graphene.Mutation):
 class DeleteLecture(graphene.Mutation):
     class Arguments:
         id = graphene.ID(required=True)
-
+        
     success = graphene.Boolean()
 
     def mutate(root, info, id):
@@ -1181,20 +1174,27 @@ class DeleteLecture(graphene.Mutation):
 class DeleteLectureInfo(graphene.Mutation):
     class Arguments:
         id = graphene.ID(required=True)
+        date = graphene.Date()
 
     success = graphene.Boolean()
 
-    def mutate(root, info, id):
+    def mutate(root, info, id, date=None):
         try:
             mother_lecture = LectureInfoModel.objects.get(id=id)
             child_lectures = mother_lecture.lectureList.all()
             for child_lecture in child_lectures:
+                if date and child_lecture.date < date:
+                    continue
                 child_lecture.students.clear()
-            mother_lecture.delete()
+                child_lecture.delete()
+
+            # 모든 child_lecture가 삭제된 경우 mother_lecture도 삭제
+            if not mother_lecture.lectureList.all().exists():
+                mother_lecture.delete()
             success = True
         except LectureModel.DoesNotExist:
             success = False
-        return DeleteLecture(success=success)
+        return DeleteLectureInfo(success=success)
 
 class UpdateTeacherInLecture(graphene.Mutation):
     class Arguments:
@@ -1594,22 +1594,7 @@ class RemoveAcademyFromUser(graphene.Mutation):
                 manager_profile.save()
                 manager_profiles.append(manager_profile)
         return RemoveAcademyFromUser(student_profile=student_profiles, teacher_profile=teacher_profiles, manager_profile=manager_profiles)
-
-
-# class CreateUser(graphene.Mutation):
-#     class Arguments:
-#         username = graphene.String(required=True)
-#         password = graphene.String(required=True)
-#         email = graphene.String(required=False)
-#         user_category = graphene.Int(required=True)
-#     user = graphene.Field(UserType)
-
-#     @staticmethod
-#     def mutate(root, info, username, password, user_category, email=None):
-#         user_category = UserCategoryModel.objects.get(id=user_category)
-#         user = UserModel.objects.create_user(username=username, password=password, user_category=user_category, email=email)
-#         return CreateUser(user=user)
-    
+ 
 class CreateUser(graphene.Mutation):
     class Arguments:
         username = graphene.String(required=True)
@@ -1651,6 +1636,37 @@ class CreateRemark(graphene.Mutation):
             new_remark.save()
             return CreateRemark(remark=new_remark)
  
+class CreateOpinion(graphene.Mutation):
+    class Arguments:
+        contents = graphene.String(required=True)
+        writer_id = graphene.ID(required=True)
+        student_id = graphene.ID(required=True)
+        date = graphene.Date(required=True)
+        opinion_id = graphene.ID(required=False)
+
+    opinion = graphene.Field(OpinionType)
+
+    def mutate(self, info, contents, student_id, writer_id, date, opinion_id):
+        user = UserModel.objects.get(id = writer_id)
+        if not user:
+            raise ValidationError("로그인을 해주세요")
+        
+        student = StudentProfileModel.objects.get(user__id = student_id)
+        
+        if not student:  
+            raise ValidationError("해당 학생 정보를 찾을 수 없습니다")
+        
+        if opinion_id:
+            old_opinion = OpinionModel.objects.get(id=opinion_id)
+            old_opinion.contents = contents
+            old_opinion.save()
+            return CreateOpinion(opinion=old_opinion)
+        
+        new_opinion = OpinionModel.objects.create(contents=contents, writer=user, student=student, created_at = date)
+        new_opinion.save()
+        return CreateOpinion(opinion=new_opinion)
+
+        
 class Login(graphene.Mutation):
     class Arguments:
         username = graphene.String(required=True)
@@ -1725,9 +1741,15 @@ class RecommendBookByRecord(graphene.Mutation):
             except model_to_use.DoesNotExist:
                 pass
 
+        # 학생이 읽은 도서의 목록을 가져옵니다.
+        read_books = BookRecordModel.objects.filter(student__user__id=student_id).values_list('book', flat=True)
+
         while recommended_pkgs:
             selected_pkg = choice(recommended_pkgs)
             matching_books = selected_pkg.books.all() if selected_pkg.il == '0' else selected_pkg.books.filter(il=selected_pkg.il)
+            # matching_books에서 학생이 읽은 도서들을 제외합니다.
+            matching_books = matching_books.exclude(id__in=read_books)
+
             available_books_in_inventory = BookInventoryModel.objects.filter(book__in=matching_books, academy_id=academy_id)
             
             unavailable_inventory_items = set(BookReservationModel.objects.filter(books__in=available_books_in_inventory).values_list('books', flat=True))
@@ -1812,9 +1834,15 @@ class RecommendBookByPeriod(graphene.Mutation):
             except model_to_use.DoesNotExist:
                 pass
 
+        # 학생이 읽은 도서의 목록을 가져옵니다.
+        read_books = BookRecordModel.objects.filter(student__user__id=student_id).values_list('book', flat=True)
+
         while recommended_pkgs:
             selected_pkg = choice(recommended_pkgs)
             matching_books = selected_pkg.books.all() if selected_pkg.il == '0' else selected_pkg.books.filter(il=selected_pkg.il)
+            # matching_books에서 학생이 읽은 도서들을 제외합니다.
+            matching_books = matching_books.exclude(id__in=read_books)
+
             available_books_in_inventory = BookInventoryModel.objects.filter(book__in=matching_books, academy_id=academy_id)
             
             unavailable_inventory_items = set(BookReservationModel.objects.filter(books__in=available_books_in_inventory).values_list('books', flat=True))
@@ -1844,7 +1872,10 @@ class Query(graphene.ObjectType):
     user_details = graphene.Field(UserType, user_id=graphene.Int(required=True), academy_id=graphene.Int(required=True))
     academies = graphene.List(AcademyType)
     studentsInAcademy = graphene.List(StudentType, academyId=graphene.Int(required=True))
+    
     all_lectures = graphene.List(LectureType, academyId=graphene.Int(required=True))
+    student_lectures = graphene.List(StudentWithLectureType, academyIds=graphene.List(graphene.ID,required=True), studentId = graphene.ID(required=True))
+
     get_lectures_book_count = graphene.List(BookReservationType, academy_id=graphene.Int(required=True))
     get_books_by_bl = graphene.List(
         BookType,
@@ -1870,7 +1901,10 @@ class Query(graphene.ObjectType):
 
     get_attendance = graphene.List(StudentType, academyId=graphene.Int(required=True), date=graphene.Date(required=True), startTime=graphene.String(), endtime=graphene.String())
     get_student_lecture_history = graphene.List(AttendanceType, academyId=graphene.Int(required=True), studentId=graphene.Int(required=True))
+    
     get_lecture_memo = graphene.List(AttendanceType,lectureId = graphene.ID(required=True))
+    get_lecture_memo_by_student = graphene.List(AttendanceType,studentId = graphene.ID(required=True), academyIds=graphene.List(graphene.ID,required=True))
+
     get_customattendance = graphene.List(StudentType, academyId=graphene.Int(required=True), date=graphene.Date(required=True), entryTime=graphene.String(), endTime=graphene.String())
     
     get_lectures_by_academy_and_month = graphene.List(LectureType, academy_id=graphene.Int(required=True), month=graphene.Int(required=True))
@@ -1883,11 +1917,12 @@ class Query(graphene.ObjectType):
     get_student_rental_status = graphene.List(BookRentalType,student_id=graphene.ID(required=False),book_id=graphene.ID(required=False))
     
     # 학습 리포트 
-    get_summary_report = graphene.Field(SummaryReportType, student_id=graphene.Int(required=True))
-    get_month_reports = graphene.List(MonthReportType, student_id=graphene.Int(required=True))
+    get_summary_report = graphene.Field(SummaryReportType, student_id=graphene.Int(required=True), date=graphene.Date(required=True))
+    get_month_reports = graphene.List(MonthReportType, student_id=graphene.Int(required=True), date=graphene.Date(required=True))
+    get_opinion = graphene.List(OpinionType,student_id=graphene.ID(required=True), user_id=graphene.ID(required=True), date=graphene.Date(required=True))
     
     # 추천도서
-    get_recommend_books = graphene.List(BookInventoryType, student_id=graphene.ID(required=True), academy_id=graphene.ID(required=True), f_nf=graphene.String(required=True))
+    get_recommend_books = graphene.List(BookInventoryType, student_id=graphene.ID(required=True), academy_id=graphene.ID(required=True), f_nf=graphene.String(required=True), is_selected=graphene.Boolean(required=True))
 
     def resolve_me(self, info):
         user = info.context.user
@@ -1915,6 +1950,16 @@ class Query(graphene.ObjectType):
     
     def resolve_all_lectures(self, info, academyId):
         return LectureModel.objects.filter(academy_id=academyId)
+    
+    def resolve_student_lectures(self, info, academyIds, studentId):
+        student  = StudentProfileModel.objects.get(user__id=studentId)
+        academies = AcademyModel.objects.filter(id__in=academyIds)
+        student_lectures = LectureModel.objects.filter(students=student, academy__in=academies)
+        result = []
+        for lecture in student_lectures:
+            swl = StudentWithLectureType(student=student, lecture=lecture)
+            result.append(swl)
+        return result
     
     def resolve_get_lectures_by_academy_and_month(root, info, academy_id, month):
         current_year = datetime.now().year
@@ -2127,6 +2172,11 @@ class Query(graphene.ObjectType):
         students_attendance = AttendanceModel.objects.filter(lecture=lecture)
         return students_attendance
 
+    def resolve_get_lecture_memo_by_student(self, info, studentId, academyIds):
+        student = StudentProfileModel.objects.get(user__id = studentId)
+        students_attendance = AttendanceModel.objects.filter(student=student, lecture__academy__id__in=academyIds).distinct()
+        return students_attendance
+
     def resolve_get_customattendance(self, info, academyId, date, entryTime, endTime):
         lectures = LectureModel.objects.filter(academy=academyId, date=date, end_time=endTime)
         students_attendance = AttendanceModel.objects.filter(lecture__in=lectures).exclude(status__in=['completed', 'cancelled', 'absent','makeup'])
@@ -2153,37 +2203,106 @@ class Query(graphene.ObjectType):
         return result
     
     # 학습 리포트
-    def resolve_get_summary_report(self, info, student_id):
+    def resolve_get_summary_report(self, info, student_id, date):
         try:
-            return SummaryReportModel.objects.get(student__user__id=student_id)
+            return SummaryReportModel.objects.get(student__user__id=student_id, base_date=date)
         except SummaryReportModel.DoesNotExist:
             return None
     
-    def resolve_get_month_reports(self, info, student_id):
-        # 현재 날짜에서 6개월 전의 날짜를 계산
-        six_months_ago = datetime.now() - timedelta(days=6*30)  # 한 달을 30일로 가정
-
+    def resolve_get_month_reports(self, info, student_id, date):
+        # 문자열로 받은 date 값을 datetime 객체로 변환
+        date_format = "%Y-%m-%d"  # 예상되는 date 문자열의 형식
+        input_date = datetime.strptime(date, date_format)
+        # 입력된 날짜에서 6개월 전의 날짜를 계산
+        six_months_ago = input_date - timedelta(days=6*30)  # 한 달을 30일로 가정
+        
         # 쿼리를 실행하여 원하는 데이터를 가져옵니다.
         return MonthReportModel.objects.filter(
             student__user__id=student_id,
-            update_time__gte=six_months_ago.strftime('%Y-%m-%d %H:%M:%S')  # update_time 필드 형식에 맞게 문자열로 변환
+            update_time__gte=six_months_ago
         ).order_by('-update_time')  # 최근 데이터부터 정렬
     
-    def resolve_get_recommend_books(self, info, student_id, academy_id, f_nf):
+    def resolve_get_opinion(self,info,student_id,user_id, date):
+        try:
+            student = StudentProfileModel.objects.get(user__id = student_id)
+            user = UserModel.objects.get(id = user_id)
+        except (StudentProfileModel.DoesNotExist, UserModel.DoesNotExist):
+            raise Exception("student or user not found.")    
+        
+        academies = []
+        
+        # 학생 카테고리인 경우
+        if hasattr(user, 'student'):
+            academies.extend(list(user.student.academies.all()))
+
+        # 선생님 카테고리인 경우
+        if hasattr(user, 'teacher'):
+            if user.teacher.academy:
+                academies.append(user.teacher.academy)
+
+        # 매니저 카테고리인 경우
+        if hasattr(user, 'manager'):
+            academies.extend(list(user.manager.academies.all()))
+
+        # 퍼플(슈퍼유저) 카테고리인 경우
+        if hasattr(user, 'superuser'):
+            academies.extend(list(user.superuser.academies.all()))
+        
+        # 로그인한 사용자의 아카데미가 writer의 아카데미에 속해있는 Opinion만 필터링
+        opinions = OpinionModel.objects.filter(student=student,date=date).filter(
+            Q(writer__teacher__academy__in=academies) |
+            Q(writer__student__academies__in=academies) |
+            Q(writer__manager__academies__in=academies)
+        ).distinct()
+        
+        if not opinions.exists():
+            raise Exception("작성된 종합의견이 존재하지 않습니다.")
+        
+        return opinions
+    
+    def resolve_get_recommend_books(self, info, student_id, academy_id, f_nf, is_selected):
         # f_nf 값에 따라 사용할 모델을 결정
         model_to_use = RecommendFictionModel if f_nf == '1' else RecommendNonFictionModel
 
         try:
-            latest_f = model_to_use.objects.filter(student__user__id=student_id).latest('created_at')
-            latest_f_recommended = latest_f.pkg
+            latest_recommendation = model_to_use.objects.filter(student__user__id=student_id).latest('created_at')
         except model_to_use.DoesNotExist:
-            raise Exception('기존에 선정된 추천 도서 패키지가 없습니다.')
+            return []
         
-        recommended_pkgs = BookPkgModel.objects.filter(name=latest_f_recommended, fnf=f_nf)
+        selected_books_list = latest_recommendation.selected_books.all()
+
+        # is_selected가 True인 경우이고 선정된 도서가 잇을 경우 이미 선정된 도서를 반환
+        if is_selected and selected_books_list.exists():
+            all_books_in_inventory = BookInventoryModel.objects.filter(book__in=selected_books_list, academy_id=academy_id)
+            unavailable_inventory_items = set(BookReservationModel.objects.filter(books__in=all_books_in_inventory).values_list('books', flat=True))
+            unavailable_inventory_items.update(BookRentalModel.objects.filter(book_inventory__in=all_books_in_inventory, returned_at__isnull=True).values_list('book_inventory', flat=True))
+            inventory_items = [inventory_item for inventory_item in all_books_in_inventory if inventory_item.id not in unavailable_inventory_items]
+            
+            selected_books = set()  # 중복 체크를 위한 set
+
+            for inventory_item in inventory_items:
+                if inventory_item.book.id in selected_books:
+                    continue  # 이미 선택된 도서는 건너뜁니다.
+
+                if inventory_item.id not in unavailable_inventory_items:
+                    inventory_item.is_available = True
+                else:
+                    inventory_item.is_available = False
+
+                selected_books.add(inventory_item.book.id)  # 선택된 도서의 ID를 추가
+            
+            return inventory_items
+        
+        # is_selected가 False인 경우, 새로운 도서를 뽑는 로직을 실행
+        recommended_pkgs = latest_recommendation.pkg
+        recommended_pkgs = BookPkgModel.objects.filter(name=recommended_pkgs, fnf=f_nf)
         all_selected_books_inventory = []
+        read_books = BookRecordModel.objects.filter(student__user__id=student_id).values_list('book', flat=True)
 
         for recommended_pkg in recommended_pkgs:
             recommended_books = recommended_pkg.books.all() if recommended_pkg.il == '0' else recommended_pkg.books.filter(il=recommended_pkg.il)
+            # matching_books에서 학생이 읽은 도서들을 제외합니다.
+            recommended_books = recommended_books.exclude(id__in=read_books)
             # BookInventory에서 선택된 도서들이 존재하는지 확인
             all_books_in_inventory = BookInventoryModel.objects.filter(book__in=recommended_books, academy_id=academy_id)
             # 예약되거나 렌탈된 도서의 인벤토리 항목을 제외
@@ -2231,52 +2350,66 @@ class Query(graphene.ObjectType):
                 selected_unavailable_books_inventory = sample(unavailable_inventory_items_list, min(remaining_count, len(unavailable_inventory_items_list)))
                 all_selected_books_inventory.extend(selected_unavailable_books_inventory)
         if all_selected_books_inventory:
+            selected_books = [inventory_item.book for inventory_item in all_selected_books_inventory]
+            latest_recommendation.selected_books.set(selected_books)
+
             all_selected_books_inventory[0].temp_inventory_num = inventory_num
             return all_selected_books_inventory
         else:
-            raise Exception('예약가능한 추천 도서 목록이 없습니다.')        
+            return []     
         
 class Mutation(graphene.ObjectType):
-    login = Login.Field()
     createUser = CreateUser.Field()
+    create_student_profile = CreateStudentProfile.Field()
+    create_remark = CreateRemark.Field()
+    create_teacher_profile = CreateTeacherProfile.Field()
+    create_manager_profile = CreateManagerProfile.Field()
+
+    login = Login.Field()
     refreshToken = RefreshToken.Field()
+    
     updateUser = UpdateUser.Field()
     updateAcademy = UpdateAcademy.Field()
     updateStudentProfile = UpdateStudentProfile.Field()
     updateManagerProfile = UpdateManagerProfile.Field()
     updateTeacherProfile = UpdateTeacherProfile.Field()
-    create_student_profile = CreateStudentProfile.Field()
-    create_teacher_profile = CreateTeacherProfile.Field()
-    create_manager_profile = CreateManagerProfile.Field()
+
     add_academy_to_user = AddAcademyToUser.Field()
     update_academy_to_user = UpdateAcademyToUser.Field()
     remove_academy_from_user = RemoveAcademyFromUser.Field()
+
     create_lecture = CreateLecture.Field()
+    create_makeup = CreateMakeup.Field()
+
     update_lecture_info = UpdateLectureInfo.Field()
     update_lecture = UpdateLecture.Field()
     update_lecture_students = UpdateLectureStudents.Field()
-    delete_lecture = DeleteLecture.Field()
+
     delete_lecture_info = DeleteLectureInfo.Field()
+    delete_lecture = DeleteLecture.Field()
 
     add_students_to_lecture = AddStudentsToLecture.Field()
     update_teacher_in_lecture = UpdateTeacherInLecture.Field()
-    remove_student_from_lecture = RemoveStudentFromLecture.Field()
     remove_student_from_lecture_info = RemoveStudentFromLectureInfo.Field()
+    remove_student_from_lecture = RemoveStudentFromLecture.Field()
+    
     create_attendance = CreateAttendance.Field()
     create_lecture_memo = CreateLectureMemo.Field()
     reserve_books = BookReservation.Field()
     reserve_plbn = PlbnReservation.Field()
-    book_inventory_update = BookInventoryUpdate.Field()
-    add_book_inventory = AddBookInventory.Field()
-    delete_book_inventory = DeleteBookInventory.Field()
+
     delete_book_reservations = DeleteBookReservations.Field()
     delete_lecture_book_reservations = DeleteLectureBookReservations.Field()
     delete_student_book_reservations = DeleteStudentBookReservations.Field()
-    create_remark = CreateRemark.Field()
-    create_makeup = CreateMakeup.Field()
+
+    book_inventory_update = BookInventoryUpdate.Field()
+    add_book_inventory = AddBookInventory.Field()
+    delete_book_inventory = DeleteBookInventory.Field()
 
     recommend_book_by_record = RecommendBookByRecord.Field()
     recommend_book_by_period = RecommendBookByPeriod.Field()
+
+    create_opinion = CreateOpinion.Field()
 
 schema = graphene.Schema(query=Query, mutation=Mutation)
 

@@ -13,7 +13,7 @@ class UserManager(BaseUserManager):
     def create_user(self, username, password=None, **extra_fields):
         if not username:
             raise ValueError('사용자 아이디는 필수입니다.')
-        
+
         user = self.model(username=username, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
@@ -25,7 +25,7 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault('user_category', user_category)
         if extra_fields.get('is_staff') is not True:
             raise ValueError('Superuser must have is_staff=True')
-        
+
         return self.create_user(username, password, **extra_fields)
 
 class User(AbstractBaseUser):
@@ -38,7 +38,7 @@ class User(AbstractBaseUser):
     user_category = models.ForeignKey(UserCategory, verbose_name="카테고리", on_delete=models.SET_NULL, null=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)        
-    
+
     REQUIRED_FIELDS = []
 
     objects = UserManager()
@@ -58,10 +58,13 @@ class Remark(models.Model):
     memo = models.TextField()
     user = models.ForeignKey(User, verbose_name="회원", on_delete=models.CASCADE, related_name='memos')
     academy = models.ForeignKey(Academy, verbose_name="학원", on_delete=models.CASCADE, related_name='memo')
-
+    
+    # class Meta:
+    #     unique_together = ['user', 'academy']
+    
     def __str__(self):
         return f"Memo for {self.student} at {self.academy}"
-    
+
 class UserProfileBase(models.Model):
     kor_name = models.CharField("한국이름", max_length=20, default='퍼플')
     eng_name = models.CharField("영어이름", max_length=20, default='purple')
@@ -83,7 +86,7 @@ class UserProfileBase(models.Model):
             today = date.today()
             return today.year - self.birth_date.year - ((today.month, today.day) < (self.birth_date.month, self.birth_date.day))
         return None
-    
+
 class Student(UserProfileBase):
     user = models.OneToOneField(User, on_delete=models.CASCADE, primary_key=True, related_name='student')
     academies = models.ManyToManyField(Academy, verbose_name='다니는학원들', related_name='academy_students')
@@ -92,25 +95,24 @@ class Student(UserProfileBase):
 
     def __str__(self):
         return f"{self.user.username} 학생 프로필"
-    
+
 class Teacher(UserProfileBase):
     user = models.OneToOneField(User, on_delete=models.CASCADE, primary_key=True, related_name='teacher')
     academy = models.ForeignKey(Academy, verbose_name="채용된 학원", related_name='academy_teachers', on_delete=models.SET_NULL, null=True)
 
     def __str__(self):
         return f"{self.user.username} 선생님 프로필"
-    
+
 class Manager(UserProfileBase):
     user = models.OneToOneField(User, on_delete=models.CASCADE, primary_key=True, related_name='manager')
     academies = models.ManyToManyField(Academy, verbose_name='관리중인 학원들', related_name='academy_manager')
 
     def __str__(self):
         return f"{self.user.username} 매니저 프로필"
-    
+
 class Superuser(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, primary_key=True)
     academies = models.ManyToManyField(Academy, verbose_name='전체 학원', related_name='superuser')
     
     def __str__(self):
         return f"{self.user.username} 퍼플 프로필"
-
